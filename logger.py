@@ -1,14 +1,31 @@
+"""Google Sheets backend for Pay Logger.
+
+Wraps a single Google Sheet ("Outback Pay Logging") with five tabs --
+Daily, Weekly, Monthly, Yearly, Payday -- as pandas DataFrames, and keeps
+the Weekly/Monthly/Yearly tabs in sync with Daily on every startup.
+
+Loaded once per run: `Logger()` connects, pulls all five tabs into
+DataFrames, and rolls Daily up into Weekly/Monthly/Yearly for any period
+that's now complete but not yet aggregated. The GUI (gui.App) then reads
+and writes through the resulting Logger instance for the rest of the
+session; every write method here re-pushes its DataFrame back to the
+sheet immediately; nothing is batched.
+"""
 import gspread
 import pandas as pd
-from datetime import datetime
 from gspread_dataframe import get_as_dataframe, set_with_dataframe
 
 CREDENTIALS_FILE = "credentials.json"
 SPREADSHEET_NAME = "Outback Pay Logging"
 MIN_WAGE = 17.65
+# Paydays ending before this date predate tip tracking in this app; addPayDay
+# zeroes out their tip-related fields instead of trying to reconstruct them.
 LEGACY_CUTOFF = pd.Timestamp("2025-08-01")
 
 class Logger():
+    """Loads the sheet's five tabs and keeps Weekly/Monthly/Yearly rolled up
+    from Daily. See the module docstring for the overall shape."""
+
     def __init__(self):
         gc = gspread.service_account(filename=CREDENTIALS_FILE)
         sh = gc.open(SPREADSHEET_NAME)
@@ -33,6 +50,28 @@ class Logger():
         self.aggregateLogs(self.yearlySheet,  self.dfYearly,  self.df, freq='YS',  colName='Year',        dateFmt='%Y',       dfAttr='dfYearly')
 
     def aggregateLogs(self, sheet, dfAgg, df, freq, colName, dateFmt, dfAttr=None):
+        """Roll Daily entries up into a Weekly/Monthly/Yearly tab.
+
+        Only adds periods that are both new (later than whatever's already
+        in `dfAgg`) and complete (the current, still-in-progress week/
+        month/year is never added, since its totals aren't final yet).
+        Writes the updated tab back to the sheet and, if `dfAttr` is given,
+        updates that attribute on `self` (e.g. `self.dfWeekly`) so the
+        in-memory copy stays in sync with what was just written.
+
+        Args:
+            sheet: the gspread Worksheet to write the aggregated result to.
+            dfAgg: the tab's current DataFrame (Weekly/Monthly/Yearly).
+            df: the Daily DataFrame to aggregate from.
+            freq: a pandas offset alias -- 'W' (week), 'MS' (month start),
+                or 'YS' (year start) -- controlling both the grouping and
+                which "is this period complete yet" check below applies.
+            colName: the tab's period-label column ("Week Ending", "Month",
+                or "Year").
+            dateFmt: strftime format used to write that column's values.
+            dfAttr: name of the `self` attribute to update with the result
+                (e.g. "dfWeekly"), or None to only write the sheet.
+        """
         if df.empty:
             print(f"No daily logs found; skipping {colName} update.")
             return
@@ -66,6 +105,8 @@ class Logger():
 
         aggregated = aggregated[aggregated['Hours'] > 0]
 
+        # Never add the period that's still in progress -- its totals
+        # aren't final until the week/month/year actually ends.
         today = pd.Timestamp.now()
         if freq == 'W':
             week_start = today - pd.Timedelta(days=today.dayofweek)
@@ -103,6 +144,8 @@ class Logger():
         print(f"{colName} updated!")
 
     def sortByDate(self, df):
+        """Return a copy of `df` sorted by its "Date" column (parsed as
+        "%m/%d/%Y"), with "Date" restored to that same string format."""
         temp_df = df.copy()
         temp_df['Date'] = pd.to_datetime(temp_df['Date'], format="%m/%d/%Y")
         temp_df = temp_df.sort_values(by="Date")
@@ -110,6 +153,12 @@ class Logger():
         return temp_df
 
     def addTip(self, newEntry):
+        """Add one Daily-sheet row and write it back to the sheet.
+
+        Args:
+            newEntry: a (date_string, card, cash, hours) tuple, where
+                date_string is "%m/%d/%Y" and card/cash/hours are floats.
+        """
         day, card, cash, hours = newEntry
 
         totalTip = cash + card
@@ -128,11 +177,46 @@ class Logger():
         set_with_dataframe(self.worksheet, sorted_df, include_index=False, resize=True)
         self.df = sorted_df
 
+    def editLog(self, index, newEntry):
+        """Replace the Daily-sheet row at `index` (a self.df DataFrame
+        index, as for deleteLog) and write the result back to the sheet.
+
+        Args:
+            newEntry: a (date_string, card, cash, hours) tuple, same shape
+                as addTip's. The date may change, so the sheet is
+                re-sorted by date afterwards.
+
+        Note: like deleteLog, this only touches Daily. Weekly/Monthly/
+        Yearly rows already rolled up and Payday rows already added are
+        not recalculated.
+        """
+        day, card, cash, hours = newEntry
+        df = self.df.copy()
+        df.loc[index, ["Date", "Hours", "Card", "Cash", "Total Tip"]] = [
+            day, hours, card, cash, card + cash]
+        df = self.sortByDate(df).reset_index(drop=True)
+        set_with_dataframe(self.worksheet, df, include_index=False, resize=True)
+        self.df = df
+
     def deleteLog(self, index):
+        """Drop the Daily-sheet row at `index` (a self.df DataFrame index,
+        not a display row number) and write the result back to the sheet."""
         self.df = self.df.drop(index).reset_index(drop=True)
         set_with_dataframe(self.worksheet, self.df, include_index=False, resize=True)
 
     def addPayDay(self, newEntry):
+        """Add one Payday-sheet row and write it back to the sheet.
+
+        Totals (hours worked, card/cash tips, etc.) are computed by
+        summing every Daily-sheet row whose date falls within
+        [start, end], *except* when `end` is before LEGACY_CUTOFF -- those
+        predate tip tracking in this app, so tip-related fields are zeroed
+        out instead of summed.
+
+        Args:
+            newEntry: a (start, end, gross, tax) tuple, where start/end are
+                datetimes and gross/tax are floats.
+        """
         start, end, gross, tax = newEntry
 
         startDate = pd.Timestamp(start)

@@ -1,19 +1,44 @@
-# Credentials & secrets
+# --- Credentials & secrets (never commit these) ---
 credentials.json
 *.json
+*.pem
+*.key
+token.*
+.env
+.env.*
 
-# Python
+# --- Python ---
 __pycache__/
 *.py[cod]
 *.pyo
-.env
+*.pyd
+*.egg-info/
+.eggs/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# --- Virtual environments ---
 venv/
 env/
+.venv/
 
-# OS
+# --- Logs, temp, and local scratch ---
+*.log
+*.tmp
+*.bak
+*.swp
+Claude outputs/
+
+# --- OS files ---
 .DS_Store
 Thumbs.db
+desktop.ini
 
-# IDE
+# --- Editors / IDEs ---
 .vscode/
 .idea/
