@@ -90,6 +90,21 @@ class Dashboard(Screen):
             grid.addWidget(card, 0, col)
             self.periods[key] = w
 
+        # Next shift -- what the upcoming scheduled shift is likely to bring
+        ncard = Card("Next shift")
+        self.nx = {}
+        self.nx["when"] = label("", role="muted")
+        self.nx["mid"] = label("—", role="big")
+        self.nx["range"] = label("", role="muted")
+        self.nx["basis"] = label("", role="muted", wrap=True)
+        self.nx["score"] = label("", role="muted", wrap=True)
+        for key in ("when", "mid", "range"):
+            ncard.body.addWidget(self.nx[key])
+        ncard.body.addSpacing(10)
+        ncard.body.addWidget(self.nx["basis"])
+        ncard.body.addWidget(self.nx["score"])
+        ncard.body.addStretch(1)
+
         # Forecast
         fcard = Card("Month-end forecast")
         self.fc = {}
@@ -107,7 +122,13 @@ class Dashboard(Screen):
         self.fc["upcoming"] = label("", role="muted", wrap=True)
         fcard.body.addWidget(self.fc["upcoming"])
         fcard.body.addStretch(1)
-        grid.addWidget(fcard, 1, 0)
+        left_column = QVBoxLayout()
+        left_column.setSpacing(22)
+        left_column.addWidget(ncard)
+        left_column.addWidget(fcard)
+        left_host = QWidget()
+        left_host.setLayout(left_column)
+        grid.addWidget(left_host, 1, 0)
 
         # Recent shifts
         # The rows are built once and refilled, never rebuilt: swapping
@@ -179,6 +200,7 @@ class Dashboard(Screen):
                 f"{money(t['per_hour'])}/hr" if n else "No shifts logged yet")
             self._fill_goal(w, app.goals.get(key), t["net"], fc)
 
+        self._fill_next_shift(d)
         self._fill_forecast(fcs["monthly"], app.goals.get("monthly"))
         self._fill_recent(d)
 
@@ -201,6 +223,46 @@ class Dashboard(Screen):
                            f"  ·  {money(gp['left'], False)} to go")
                 widgets.tone(lb, None)
         widgets.restyle(bar)
+
+    def _fill_next_shift(self, d):
+        """The next shift on the calendar, and what it's likely to bring.
+        Deliberately shown as a range with its own track record -- a single
+        number would be more confident than the data allows."""
+        nx = self.nx
+        upcoming = self.app.upcomingShifts
+        when = upcoming[0] if upcoming else None
+        guess = stats.predict_shift(d, when) if when else None
+
+        if guess is None:
+            for key in ("mid", "range", "basis", "score"):
+                nx[key].setText("")
+            nx["mid"].setText("—")
+            if when is not None:          # scheduled, but too little history
+                nx["when"].setText(f"{when:%a, %b} {when.day}")
+                nx["basis"].setText("Not enough logged shifts to predict yet.")
+            else:
+                nx["when"].setText("Nothing scheduled" if upcoming is not None
+                                   else "Opened without the calendar check")
+            return
+
+        # Built by hand rather than with strftime: "%-I" (no leading zero)
+        # is a GNU extension and raises on Windows.
+        start = self.app.shiftStarts.get(when)
+        clock = ""
+        if start and (start.hour or start.minute):
+            hour = start.hour % 12 or 12
+            clock = f"  ·  {hour}:{start.minute:02d} {'am' if start.hour < 12 else 'pm'}"
+        nx["when"].setText(f"{when:%a, %b} {when.day}{clock}")
+        nx["mid"].setText("~" + money(guess["mid"], False))
+        nx["range"].setText(f"usually {money(guess['lo'], False)} – "
+                            f"{money(guess['hi'], False)}")
+        nx["basis"].setText(f"From {guess['basis']} ({guess['samples']} shifts).")
+
+        score = stats.prediction_accuracy(d)
+        nx["score"].setText(
+            f"Past guesses were off by about {money(score['median_err'], False)}, "
+            f"and {round(score['coverage'] * 10)} in 10 landed in the range."
+            if score else "")
 
     def _fill_forecast(self, fc, goal):
         f = self.fc

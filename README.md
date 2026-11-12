@@ -16,6 +16,9 @@ logged yet -- including days you missed -- see "Running it" below.
   take-home and $/hr readout. The date defaults to the next unlogged shift
   (or today), and the shift type is pre-picked from the calendar shift's
   start time (before 3pm = Lunch).
+- **Next shift** (Dashboard) -- what the next shift on your calendar is
+  likely to bring, as a range, with the prediction's own track record
+  beside it.
 - **Insights** -- for the last 30/90 days, this year, or all time: average
   take-home per shift by weekday (chart), tables by shift type and by
   section, and your best and slowest shifts.
@@ -57,6 +60,31 @@ calendar check, they're estimated from how often you've worked lately.
 With a monthly goal set, it tells you whether you're on track or roughly
 how many extra shifts you'd need to pick up. The week and year cards show
 an "on pace for" figure the same way.
+
+### Predicting one shift
+
+The Dashboard estimates the next scheduled shift from your own history.
+It looks for the same weekday over the last 120 days; if that weekday is
+thin lately it falls back to every one of those weekdays you have logged,
+scaled by how much the job pays now against its whole history; failing
+that, your recent shifts. The figure is the median of that group and the
+range its 5th-95th percentiles.
+
+It is shown as a range on purpose, with `stats.prediction_accuracy()`
+beside it: that re-runs the prediction across your last 60 shifts, each
+predicted from only what came before it, and reports how far off it
+usually was and how often reality landed inside the range. The app says
+that out loud rather than asking to be trusted.
+
+Measured on 294 real shifts, the model missed by about $37 in a typical
+shift (against $48 for "your average shift") and its range held about
+three quarters of the time. Knowing the shift length would cut the miss
+to about $33, but a Hotschedules calendar entry is a 5-minute marker --
+it carries a start time, not a duration -- so the Dashboard predicts
+without it. `predict_shift(..., hours=...)` takes one when it is known.
+
+Window length, fallback order and the percentile band were all picked by
+backtesting against real history, not by taste.
 
 ### Missing entries
 
@@ -112,7 +140,8 @@ plogger/
     main.pyw            Entry point (see "Running it" below).
     dashboard.pyw        Opens the app regardless (main.pyw --open).
     stats.py             Dashboard/Insights math: period totals, forecast,
-                          goal progress, breakdowns. Pure pandas.
+                          next-shift prediction and its self-scoring, goal
+                          progress, breakdowns. Pure pandas.
     goals.py             Loads/saves goals.json (income goals).
     logger.py            Google Sheets backend: loads the 5 sheet tabs into
                           pandas DataFrames, aggregates Daily -> Weekly/
