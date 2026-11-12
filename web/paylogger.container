@@ -1,0 +1,26 @@
+# Quadlet unit for the Pay Logger web app, matching the rootless-Podman +
+# systemd setup the music stack uses. Install to:
+#   ~/.config/containers/systemd/paylogger.container
+# then: systemctl --user daemon-reload && systemctl --user start paylogger
+[Unit]
+Description=Pay Logger web app
+After=network-online.target
+Wants=network-online.target
+
+[Container]
+Image=localhost/paylogger:latest
+ContainerName=paylogger
+# Reachable on the LAN and over Tailscale at ac-server:8690.
+PublishPort=8690:8690
+# credentials.json (the service account) and goals.json live on the host,
+# not in the image. Put credentials.json at ~/paylogger/credentials.json.
+Volume=%h/paylogger/credentials.json:/app/credentials.json:ro
+Volume=%h/paylogger/data:/data
+Environment=PAYLOGGER_GOALS=/data/goals.json
+Environment=TZ=America/New_York
+
+[Service]
+Restart=always
+
+[Install]
+WantedBy=default.target

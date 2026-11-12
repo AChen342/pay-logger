@@ -266,6 +266,45 @@ def goal_progress(goal, so_far, projected=None, per_shift=None):
     return out
 
 
+# --- Tip series (for the web charts) --------------------------------------
+# The desktop draws its charts with matplotlib (gui/ui); the web app draws
+# them in the browser from plain numbers, so this returns the series rather
+# than a figure -- and keeps matplotlib out of the web container.
+
+_SERIES_FREQ = {"Day": None, "Week": "W", "Month": "MS", "Year": "YS"}
+_SERIES_FMT = {"Day": "%m/%d/%y", "Week": "%m/%d/%y", "Month": "%b %Y", "Year": "%Y"}
+
+
+def tips_series(d, granularity="Day", start=None, end=None, metric="Total tips"):
+    """{labels, card, cash, tipout, per_hour} for card+cash(-tipout) bars by
+    day/week/month/year over [start, end]. `metric` "Tips per hour" divides
+    each period by its hours. Take-home is card + cash - tip out."""
+    d = between(d, start, end)
+    freq = _SERIES_FREQ.get(granularity)
+    cols = ["Card", "Cash", "TipOut", "Hours"]
+    if d.empty:
+        g = pd.DataFrame(columns=["Date"] + cols)
+    elif freq is None:
+        g = d[["Date"] + cols].copy()
+    else:
+        g = d.set_index("Date")[cols].groupby(pd.Grouper(freq=freq)).sum().reset_index()
+        g = g[(g["Card"] + g["Cash"] > 0) | (g["Hours"] > 0)]
+    g = g.sort_values("Date")
+    per_hour = metric == "Tips per hour"
+
+    def scale(col):
+        if not per_hour:
+            return [round(float(v), 2) for v in g[col]]
+        return [round(float(v) / h, 2) if h > 0 else 0.0
+                for v, h in zip(g[col], g["Hours"])]
+
+    labels = [t.strftime(_SERIES_FMT[granularity]) for t in g["Date"]]
+    return {"labels": labels, "card": scale("Card"), "cash": scale("Cash"),
+            "tipout": scale("TipOut"),
+            "hours": [round(float(h), 2) for h in g["Hours"]],
+            "per_hour": per_hour}
+
+
 # --- Holidays -------------------------------------------------------------
 # A small built-in table (no external package). Each entry is a greeting
 # and, where the pattern is well known for a casual steakhouse, a note on

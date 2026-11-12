@@ -1,0 +1,20 @@
+# Pay Logger web app -- slim image, no Qt or matplotlib (the web charts are
+# drawn in the browser). Build from the repo root:
+#     podman build -t paylogger -f web/Containerfile .
+FROM python:3.12-slim
+
+WORKDIR /app
+ENV PYTHONUNBUFFERED=1 TZ=America/New_York
+
+COPY web/requirements-web.txt .
+RUN pip install --no-cache-dir -r requirements-web.txt
+
+# Only the data layer and the web server -- not the desktop UI (ui/, gui/,
+# charts.py, main.pyw), which need Qt/matplotlib and aren't used here.
+COPY logger.py stats.py goals.py formatting.py calsync.py ./
+COPY web/ ./web/
+
+EXPOSE 8690
+# credentials.json and goals.json are mounted at runtime (see the Quadlet
+# unit), never baked into the image.
+CMD ["uvicorn", "web.server:app", "--host", "0.0.0.0", "--port", "8690"]
