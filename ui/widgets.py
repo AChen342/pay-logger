@@ -13,7 +13,6 @@ from PySide6.QtWidgets import (QAbstractItemView, QComboBox, QDateEdit, QFrame,
                                QPushButton, QSizePolicy, QTableView,
                                QVBoxLayout, QWidget)
 
-import charts
 import logger
 from . import theme
 
@@ -87,10 +86,10 @@ def row(*widgets, spacing=10, stretch_at=None):
 
 
 class Card(QFrame):
-    """A bordered panel with an optional small caption at the top. Add
-    content to `.body` (a QVBoxLayout)."""
+    """A white panel with a hairline border and an optional small caption
+    at the top. Add content to `.body` (a QVBoxLayout)."""
 
-    def __init__(self, caption=None, padding=18, spacing=4):
+    def __init__(self, caption=None, padding=22, spacing=5):
         super().__init__()
         self.setObjectName("card")
         self.body = QVBoxLayout(self)
@@ -100,16 +99,16 @@ class Card(QFrame):
             self.body.addWidget(label(caption.upper(), role="caption"))
 
 
-class StatTile(QFrame):
-    """Caption above a value, in a small bordered box. `.set(text)`."""
+class StatTile(QWidget):
+    """Caption above a value, with no box around it -- the spacing does the
+    separating. `.set(text)`."""
 
     def __init__(self, caption, tone_=None):
         super().__init__()
-        self.setObjectName("tile")
         lay = QVBoxLayout(self)
-        lay.setContentsMargins(16, 10, 16, 10)
-        lay.setSpacing(2)
-        lay.addWidget(label(caption, role="caption"))
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(3)
+        lay.addWidget(label(caption.upper(), role="caption"))
         self.value = label("—", role="head", tone=tone_)
         lay.addWidget(self.value)
 
@@ -233,10 +232,10 @@ class DataTable(QWidget):
         self.view = QTableView()
         self.view.setModel(self.proxy)
         self.view.setSortingEnabled(True)
-        self.view.setAlternatingRowColors(True)
+        self.view.setAlternatingRowColors(False)
         self.view.setShowGrid(False)
         self.view.verticalHeader().setVisible(False)
-        self.view.verticalHeader().setDefaultSectionSize(34)
+        self.view.verticalHeader().setDefaultSectionSize(40)
         self.view.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.view.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.view.setSelectionMode(
@@ -256,9 +255,17 @@ class DataTable(QWidget):
         if rows_visible:
             # Header + N rows (plus the frame), so a short table sits where
             # the layout expects it without growing a scrollbar.
-            self.view.setMinimumHeight(46 + 34 * rows_visible)
+            self.view.setMinimumHeight(54 + 40 * rows_visible)
         if headers:
             self.load(headers, [])
+
+    def fit_to_rows(self, n, cap=None):
+        """Size the table to exactly `n` rows (no empty space, no scrollbar).
+        For short breakdowns whose length varies."""
+        n = max(1, min(n, cap or n))
+        height = 54 + 40 * n
+        self.view.setMinimumHeight(height)
+        self.view.setMaximumHeight(height)
 
     def set_fit(self, fit):
         """How columns share the width: "stretch" (even, nothing cut off --
@@ -310,27 +317,46 @@ class DataTable(QWidget):
 
 class ChartView(QWidget):
     """Hosts one matplotlib figure. `figure` is built lazily on the first
-    `draw(fn)` so a screen that is never opened never pays for it."""
+    `draw(fn)` so a screen that is never opened never pays for it.
+
+    While the window is minimized (the app starts that way when nothing
+    needs logging) this widget has no size, and rendering a 0x0 figure
+    fails -- on Windows with "OSError: [Errno 22] Invalid argument". So a
+    draw that arrives too early is held and done on the first resize that
+    gives the widget room.
+    """
+
+    MIN_SIZE = 40  # px: below this, matplotlib has nothing to render into
 
     def __init__(self):
         super().__init__()
-        self.setMinimumHeight(240)  # a collapsed canvas upsets matplotlib
+        self.setMinimumHeight(230)
         self._lay = QVBoxLayout(self)
         self._lay.setContentsMargins(0, 0, 0, 0)
         self.figure = None
         self.canvas = None
+        self._pending = None   # a build held until the widget has a size
 
     def draw(self, build):
         """`build(fig)` draws into (and returns) the figure."""
         from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 
+        if self.width() < self.MIN_SIZE or self.height() < self.MIN_SIZE:
+            self._pending = build
+            return None
+        self._pending = None
         self.figure = build(self.figure)
         if self.canvas is None:
             self.canvas = FigureCanvasQTAgg(self.figure)
-            self.canvas.setStyleSheet(f"background: {charts.BG};")
+            self.canvas.setStyleSheet(f"background: {theme.CHART.bg};")
             self._lay.addWidget(self.canvas)
         self.canvas.draw_idle()
         return self.canvas
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if self._pending is not None:
+            self.draw(self._pending)
 
 
 # --- Shift form -----------------------------------------------------------
@@ -352,12 +378,12 @@ class ShiftForm(QWidget):
         self._money = money
         grid = QHBoxLayout(self)
         grid.setContentsMargins(0, 0, 0, 0)
-        grid.setSpacing(42)
+        grid.setSpacing(56)
 
         left = QVBoxLayout()
-        left.setSpacing(12)
+        left.setSpacing(16)
         right = QVBoxLayout()
-        right.setSpacing(12)
+        right.setSpacing(16)
         for col in (left, right):
             holder = QWidget()
             holder.setLayout(col)
@@ -366,8 +392,8 @@ class ShiftForm(QWidget):
 
         def field(column, text, widget):
             lb = label(text, role="caption")
-            lb.setFixedWidth(104)
-            column.addWidget(row(lb, widget, None, spacing=12))
+            lb.setFixedWidth(108)
+            column.addWidget(row(lb, widget, None, spacing=14))
             return widget
 
         self.date = field(left, "DATE", DateEdit())
@@ -389,9 +415,8 @@ class ShiftForm(QWidget):
                                  QSizePolicy.Policy.Fixed)
 
         self.preview = label("", role="head", tone="accent")
+        left.addSpacing(8)
         left.addWidget(self.preview)
-        left.addStretch(1)
-        right.addStretch(1)
 
         for box in (self.card, self.cash, self.tip_out, self.hours):
             box.textChanged.connect(self._update_preview)
@@ -468,6 +493,3 @@ def sections_used(df):
     return list(s[s != ""].value_counts().index)
 
 
-def theme_tone(name):
-    """Color constant by name, for code that builds style strings."""
-    return getattr(theme, name.upper(), theme.TEXT)

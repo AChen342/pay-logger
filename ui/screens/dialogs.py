@@ -18,7 +18,7 @@ class _Dialog(QDialog):
         self.body.setSpacing(14)
 
         self.error = label("", tone="danger")
-        self.save_button = widgets.button(save_text, "success", self.save)
+        self.save_button = widgets.button(save_text, "primary", self.save)
         self._buttons = row(self.save_button,
                             widgets.button("Cancel", "ghost", self.reject),
                             self.error, None)

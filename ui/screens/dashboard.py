@@ -20,15 +20,15 @@ PERIOD_CARDS = (("weekly", "This week"), ("monthly", "This month"),
                 ("yearly", "This year"))
 
 NAV = (
-    ("＋  Add Shift", pages.ADD_SHIFT, "success"),
-    ("Logs", pages.VIEW_LOGS, None),
-    ("Insights", pages.INSIGHTS, None),
-    ("Payday", pages.ADD_PAYDAY, None),
-    ("Edit / Delete", pages.EDIT_LOGS, None),
+    ("Add shift", pages.ADD_SHIFT, "primary"),
+    ("Logs", pages.VIEW_LOGS, "ghost"),
+    ("Insights", pages.INSIGHTS, "ghost"),
+    ("Payday", pages.ADD_PAYDAY, "ghost"),
+    ("Edit", pages.EDIT_LOGS, "ghost"),
 )
 
 
-RECENT_ROWS = 10  # how many shifts the "Recent shifts" card lists
+RECENT_ROWS = 8  # how many shifts the "Recent shifts" card lists
 
 
 class Dashboard(Screen):
@@ -49,21 +49,22 @@ class Dashboard(Screen):
         nav = [widgets.button(text, variant,
                               lambda _=False, p=page: app.show_page(p))
                for text, page, variant in NAV]
-        nav.append(widgets.button("Goals", None, self.edit_goals))
+        nav.append(widgets.button("Goals", "ghost", self.edit_goals))
         nav.append(widgets.button("Quit", "ghost", app.close))
-        self.body.addWidget(row(title_host, None, *nav, spacing=8))
+        self.body.addWidget(row(title_host, None, *nav, spacing=6))
+        self.body.addSpacing(8)
 
-        self.missed = label("", tone="warning")
+        self.missed = label("", tone="warning", role="figure")
         self.missed.setVisible(False)
         self.body.addWidget(self.missed)
 
         # --- Cards ------------------------------------------------------
         grid = QGridLayout()
-        grid.setSpacing(16)
+        grid.setSpacing(22)
         for c in range(3):
             grid.setColumnStretch(c, 1)
-        grid.setRowStretch(1, 1)
-        self.body.addLayout(grid, 1)
+        self.body.addLayout(grid)
+        self.body.addStretch(1)
 
         self.periods = {}
         for col, (key, caption) in enumerate(PERIOD_CARDS):
@@ -77,14 +78,14 @@ class Dashboard(Screen):
             bar.setFixedHeight(10)
             w["bar"] = bar
             w["goal"] = label("", role="muted")
-            w["pace"] = label("", tone="info")
             card.body.addWidget(w["range"])
+            card.body.addSpacing(2)
             card.body.addWidget(w["net"])
             card.body.addWidget(w["detail"])
-            card.body.addSpacing(10)
+            card.body.addSpacing(16)
             card.body.addWidget(bar)
+            card.body.addSpacing(2)
             card.body.addWidget(w["goal"])
-            card.body.addWidget(w["pace"])
             card.body.addStretch(1)
             grid.addWidget(card, 0, col)
             self.periods[key] = w
@@ -114,30 +115,28 @@ class Dashboard(Screen):
         # of leftovers drawn over the new rows.
         rcard = Card("Recent shifts")
         recent = QGridLayout()
-        recent.setHorizontalSpacing(20)
-        recent.setVerticalSpacing(9)
-        recent.setColumnStretch(4, 1)
+        recent.setHorizontalSpacing(26)
+        recent.setVerticalSpacing(12)
+        recent.setColumnStretch(3, 1)
         right = Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
         self.recent_rows = []
         for i in range(RECENT_ROWS):
             cells = {
                 "when": label(),
                 "type": label(role="muted"),
-                "net": label(tone="accent"),
-                "per": label(role="muted"),
+                "net": label(role="figure"),
                 "note": label(role="muted"),
             }
             cells["net"].setAlignment(right)
-            cells["per"].setAlignment(right)
-            for col, key in enumerate(("when", "type", "net", "per", "note")):
+            for col, key in enumerate(("when", "type", "net", "note")):
                 recent.addWidget(cells[key], i, col)
             self.recent_rows.append(cells)
         self.recent_empty = label("No shifts logged yet.", role="muted")
-        recent.addWidget(self.recent_empty, RECENT_ROWS, 0, 1, 5)
+        recent.addWidget(self.recent_empty, RECENT_ROWS, 0, 1, 4)
         holder = QWidget()
         holder.setLayout(recent)
         holder.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
-        rcard.body.addSpacing(6)
+        rcard.body.addSpacing(8)
         rcard.body.addWidget(holder)
         rcard.body.addStretch(1)
         link = widgets.button("View all logs  →", "link",
@@ -179,8 +178,6 @@ class Dashboard(Screen):
                 f"{n} shift{'s' if n != 1 else ''}  ·  {t['hours']:g} hrs  ·  "
                 f"{money(t['per_hour'])}/hr" if n else "No shifts logged yet")
             self._fill_goal(w, app.goals.get(key), t["net"], fc)
-            w["pace"].setText(f"On pace for ~{money(fc['projected'], False)}"
-                              if fc and key != "monthly" else "")
 
         self._fill_forecast(fcs["monthly"], app.goals.get("monthly"))
         self._fill_recent(d)
@@ -189,14 +186,13 @@ class Dashboard(Screen):
         gp = stats.goal_progress(goal, net, fc["projected"] if fc else None,
                                  fc["per_shift"] if fc else None)
         bar, lb = w["bar"], w["goal"]
+        bar.setVisible(gp is not None)
+        lb.setVisible(gp is not None)
         if gp is None:
-            bar.setValue(0)
-            bar.setProperty("tone", "")
-            lb.setText("No goal set — click Goals")
-            widgets.tone(lb, None)
+            pass
         else:
             bar.setValue(int(gp["pct"] * 100))
-            bar.setProperty("tone", "success" if gp["pct"] >= 1 else "")
+            bar.setProperty("tone", "" if gp["pct"] >= 1 else "muted")
             if gp["left"] <= 0:
                 lb.setText(f"✓  {money(goal, False)} goal reached")
                 widgets.tone(lb, "accent")
@@ -217,7 +213,7 @@ class Dashboard(Screen):
         f["projected"].setText(money(fc["projected"], False))
         f["range"].setText(f"Likely between {money(fc['low'], False)} and "
                            f"{money(fc['high'], False)}")
-        f["so_far"].setText(f"{money(fc['so_far'])} earned so far this month")
+        f["so_far"].setText(f"{money(fc['so_far'], False)} earned so far")
         n = len(fc["remaining"])
         where = ("on your schedule" if fc["source"] == "calendar"
                  else "expected at your usual pace")
@@ -241,9 +237,8 @@ class Dashboard(Screen):
             widgets.tone(goal_label, "warning")
 
         if fc["source"] == "calendar" and fc["remaining"]:
-            days = ", ".join(f"{u:%a} {u.month}/{u.day}" for u in fc["remaining"][:10])
-            more = len(fc["remaining"]) - 10
-            f["upcoming"].setText("Upcoming: " + days + (f" +{more} more" if more > 0 else ""))
+            days = "   ".join(f"{u:%a} {u.month}/{u.day}" for u in fc["remaining"][:4])
+            f["upcoming"].setText("Next up   " + days)
         elif fc["source"] == "pace":
             f["upcoming"].setText("Opened without the calendar check, so this "
                                   "is based on how often you've worked lately.")
@@ -265,8 +260,7 @@ class Dashboard(Screen):
             cells["when"].setText(f"{r['Date']:%a %m/%d}")
             cells["type"].setText(r["Type"] or "—")
             cells["net"].setText(money(r["Net"]))
-            cells["per"].setText(f"{money(r['Net'] / r['Hours'])}/hr" if r["Hours"] > 0 else "")
-            cells["note"].setText(note if len(note) <= 70 else note[:67] + "…")
+            cells["note"].setText(note if len(note) <= 64 else note[:61] + "…")
             for cell in cells.values():
                 cell.setVisible(True)
 

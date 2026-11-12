@@ -34,7 +34,7 @@ class AddPayday(Screen):
         field("GROSS PAY", self.gross)
         field("TAX TAKEN", self.tax)
 
-        self.submit_button = widgets.button("Save Payday", "success", self.submit)
+        self.submit_button = widgets.button("Save Payday", "primary", self.submit)
         self.status = label("")
         card.body.addWidget(row(
             self.submit_button,

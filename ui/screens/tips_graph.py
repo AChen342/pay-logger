@@ -9,7 +9,7 @@ which is blitted over a cached render so moving the mouse stays cheap.
 from PySide6.QtWidgets import QComboBox, QVBoxLayout, QWidget
 
 import charts
-from .. import widgets
+from .. import theme, widgets
 from ..widgets import ChartView, DateEdit, StatTile, label, row
 
 STAT_TILES = (("total", "Take-home"), ("avg_shift", "Avg per shift"),
@@ -47,14 +47,15 @@ class TipsGraph(QWidget):
             label("FROM", role="caption"), self.start,
             label("TO", role="caption"), self.end, 8,
             widgets.button("Reset range", "ghost", self.reset_range), None,
-            spacing=8))
+            spacing=10))
 
         tiles = []
         self.tiles = {}
         for key, caption in STAT_TILES:
             self.tiles[key] = StatTile(caption)
             tiles.append(self.tiles[key])
-        lay.addWidget(row(*tiles, None))
+        lay.addSpacing(4)
+        lay.addWidget(row(*tiles, None, spacing=40))
 
         self.chart = ChartView()
         lay.addWidget(self.chart, 1)
@@ -90,7 +91,7 @@ class TipsGraph(QWidget):
         first = self.chart.canvas is None
         self.chart.draw(lambda fig: charts.tips_figure(
             df, self.view_by.currentText(), start, end, fig=fig,
-            metric=self.metric.currentText()))
+            metric=self.metric.currentText(), palette=theme.CHART))
         if first:
             canvas = self.chart.canvas
             canvas.mpl_connect("draw_event", self._cache_background)

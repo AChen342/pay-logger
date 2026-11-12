@@ -23,17 +23,17 @@ class Screen(QWidget):
         self._drawn = None
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(32, 26, 32, 24)
-        root.setSpacing(14)
+        root.setContentsMargins(44, 32, 44, 32)
+        root.setSpacing(18)
         if self.title:
             back = widgets.button("←  Home", "ghost",
                                   lambda: app.show_page(pages.HOME))
             root.addWidget(widgets.row(
                 widgets.label(self.title, role="title"), None,
                 *( [back] if self.back_button else [] )))
-            root.addWidget(widgets.separator())
+
         self.body = QVBoxLayout()
-        self.body.setSpacing(14)
+        self.body.setSpacing(18)
         root.addLayout(self.body, 1)
 
     # --- Redraw control ---------------------------------------------

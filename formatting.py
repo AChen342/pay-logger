@@ -52,7 +52,7 @@ def fmtDate(v, fmt="%m/%d/%Y"):
 
 # Columns every tip-log table shows (Add Shift, View Logs, Edit/Delete).
 TIP_HEADERS = ["Date", "Type", "Hours", "Card", "Cash", "Tip Out",
-               "Take-home", "$/hr", "Section", "Notes"]
+               "Take-home", "Section", "Notes"]
 
 
 def money(v, cents=True):
@@ -99,7 +99,6 @@ def tip_row(r):
     return (fmtDate(r['Date']), text(r.get('Shift Type')), fmt(hours),
             fmt(num(r.get('Card'))), fmt(num(r.get('Cash'))),
             fmt(num(r.get('Tip Out'))), fmt(net),
-            fmt(net / hours) if hours > 0 else "",
             text(r.get('Section')), text(r.get('Notes')))
 
 

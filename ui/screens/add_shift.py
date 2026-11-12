@@ -25,7 +25,7 @@ class AddShift(Screen):
         self.form.submitted.connect(self.save)
         card.body.addWidget(self.form)
 
-        self.save_button = widgets.button("Save Shift", "success", self.save)
+        self.save_button = widgets.button("Save Shift", "primary", self.save)
         self.status = label("")
         card.body.addWidget(row(
             self.save_button,

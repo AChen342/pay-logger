@@ -9,6 +9,7 @@ screen redraws only when `stamp()` changes (see below).
 import os
 import sys
 import threading
+import traceback
 
 from PySide6.QtCore import QTimer, Qt, Signal
 from PySide6.QtGui import QIcon
@@ -146,8 +147,17 @@ class App(QMainWindow):
             on_show()
 
     def _warm_up(self):
-        """Draw the slow-to-build chart screens once in the background,
-        one per tick, so the first click on them is instant too."""
+        """Draw the slow-to-build chart screens once in the background, one
+        per tick, so the first click on them is instant too.
+
+        Skipped while the window is minimized (how the app starts when
+        nothing needs logging): the widgets have no size then, and drawing
+        a chart into nothing fails -- on Windows with "OSError: [Errno 22]
+        Invalid argument". It retries until the window is open."""
+        if self.isMinimized() or not self.isVisible():
+            QTimer.singleShot(10_000, self._warm_up)
+            return
+
         steps = [self.frames[pages.INSIGHTS].refresh,
                  self.frames[pages.VIEW_LOGS].warm_up]
 
@@ -156,8 +166,9 @@ class App(QMainWindow):
                 return
             try:
                 steps.pop(0)()
-            except Exception as e:
-                print(f"Warm-up step failed ({type(e).__name__}: {e})")
+            except Exception:
+                print("Warm-up step failed:")
+                traceback.print_exc()
             QTimer.singleShot(120, run)
 
         run()
@@ -201,6 +212,7 @@ class App(QMainWindow):
         QTimer.singleShot(self._rescanMs, self._start_rescan)
         if error is not None or scan is None:
             print(f"Calendar re-check failed ({type(error).__name__}: {error})")
+            traceback.print_exception(type(error), error, error.__traceback__)
             return
         before = set(self.unlogged_dates())
         if scan["all_shifts"] != self.logger.shiftDates:
