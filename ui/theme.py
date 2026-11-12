@@ -84,7 +84,7 @@ CHART = PALETTES[MODE]["CHART"]   # the matplotlib palette that matches
 _FONT_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "fonts")
 
 FAMILY = "Segoe UI"
-SIZES = {"big": 28, "title": 19, "head": 12, "body": 10, "small": 8}
+SIZES = {"big": 22, "title": 18, "head": 12, "body": 10, "small": 8}
 
 
 def load_fonts():

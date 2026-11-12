@@ -27,8 +27,8 @@ class Screen(QWidget):
         self._drawn = None
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(44, 32, 44, 32)
-        root.setSpacing(18)
+        root.setContentsMargins(36, 18, 36, 18)
+        root.setSpacing(12)
         if self.title:
             back = widgets.button("←  Home", "ghost",
                                   lambda: app.show_page(pages.HOME))
@@ -37,7 +37,7 @@ class Screen(QWidget):
                 *( [back] if self.back_button else [] )))
 
         self.body = QVBoxLayout()
-        self.body.setSpacing(18)
+        self.body.setSpacing(12)
         if self.scrollable:
             inner = QWidget()
             inner.setLayout(self.body)

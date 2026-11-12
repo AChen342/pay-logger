@@ -28,7 +28,7 @@ NAV = (
 )
 
 
-RECENT_ROWS = 8  # how many shifts the "Recent shifts" card lists
+RECENT_ROWS = 7  # how many shifts the "Recent shifts" card lists
 
 
 class Dashboard(Screen):
@@ -54,7 +54,6 @@ class Dashboard(Screen):
         nav.append(widgets.button("Settings", "ghost", self.edit_goals))
         nav.append(widgets.button("Quit", "ghost", app.close))
         self.body.addWidget(row(title_host, None, *nav, spacing=6))
-        self.body.addSpacing(8)
 
         self.missed = label("", tone="warning", role="figure")
         self.missed.setVisible(False)
@@ -62,7 +61,7 @@ class Dashboard(Screen):
 
         # --- Cards ------------------------------------------------------
         grid = QGridLayout()
-        grid.setSpacing(22)
+        grid.setSpacing(16)
         for c in range(3):
             grid.setColumnStretch(c, 1)
         self.body.addLayout(grid)
@@ -84,7 +83,7 @@ class Dashboard(Screen):
             card.body.addSpacing(2)
             card.body.addWidget(w["net"])
             card.body.addWidget(w["detail"])
-            card.body.addSpacing(16)
+            card.body.addSpacing(12)
             card.body.addWidget(bar)
             card.body.addSpacing(2)
             card.body.addWidget(w["goal"])
@@ -98,13 +97,11 @@ class Dashboard(Screen):
         self.nx["when"] = label("", role="muted")
         self.nx["mid"] = label("—", role="big")
         self.nx["range"] = label("", role="muted")
-        self.nx["basis"] = label("", role="muted", wrap=True)
-        self.nx["score"] = label("", role="muted", wrap=True)
+        self.nx["detail"] = label("", role="muted", wrap=True)
         for key in ("when", "mid", "range"):
             ncard.body.addWidget(self.nx[key])
-        ncard.body.addSpacing(10)
-        ncard.body.addWidget(self.nx["basis"])
-        ncard.body.addWidget(self.nx["score"])
+        ncard.body.addSpacing(8)
+        ncard.body.addWidget(self.nx["detail"])
         ncard.body.addStretch(1)
 
         # Forecast
@@ -114,18 +111,19 @@ class Dashboard(Screen):
         self.fc["range"] = label("", role="muted")
         fcard.body.addWidget(self.fc["projected"])
         fcard.body.addWidget(self.fc["range"])
-        fcard.body.addSpacing(8)
+        fcard.body.addSpacing(6)
         fcard.body.addWidget(widgets.separator())
-        fcard.body.addSpacing(8)
-        for key in ("so_far", "left", "likely", "goal"):
+        fcard.body.addSpacing(6)
+        for key in ("left", "likely", "goal"):
             self.fc[key] = label("", wrap=True)
             fcard.body.addWidget(self.fc[key])
-            fcard.body.addSpacing(4)
+            fcard.body.addSpacing(2)
         self.fc["upcoming"] = label("", role="muted", wrap=True)
+        fcard.body.addSpacing(2)
         fcard.body.addWidget(self.fc["upcoming"])
         fcard.body.addStretch(1)
         left_column = QVBoxLayout()
-        left_column.setSpacing(22)
+        left_column.setSpacing(16)
         left_column.setContentsMargins(0, 0, 0, 0)
         left_column.addWidget(ncard)
         left_column.addWidget(fcard)
@@ -140,7 +138,7 @@ class Dashboard(Screen):
         rcard = Card("Recent shifts")
         recent = QGridLayout()
         recent.setHorizontalSpacing(26)
-        recent.setVerticalSpacing(12)
+        recent.setVerticalSpacing(9)
         recent.setColumnStretch(3, 1)
         right = Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
         self.recent_rows = []
@@ -160,7 +158,7 @@ class Dashboard(Screen):
         holder = QWidget()
         holder.setLayout(recent)
         holder.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
-        rcard.body.addSpacing(8)
+        rcard.body.addSpacing(6)
         rcard.body.addWidget(holder)
         rcard.body.addStretch(1)
         link = widgets.button("View all logs  →", "link",
@@ -243,12 +241,12 @@ class Dashboard(Screen):
         guess = stats.predict_shift(d, when) if when else None
 
         if guess is None:
-            for key in ("mid", "range", "basis", "score"):
+            for key in ("mid", "range", "detail"):
                 nx[key].setText("")
             nx["mid"].setText("—")
             if when is not None:          # scheduled, but too little history
                 nx["when"].setText(f"{when:%a, %b} {when.day}")
-                nx["basis"].setText("Not enough logged shifts to predict yet.")
+                nx["detail"].setText("Not enough logged shifts to predict yet.")
             else:
                 nx["when"].setText("Nothing scheduled" if upcoming is not None
                                    else "Opened without the calendar check")
@@ -265,34 +263,34 @@ class Dashboard(Screen):
         nx["mid"].setText("~" + money(guess["mid"], False))
         nx["range"].setText(f"usually {money(guess['lo'], False)} – "
                             f"{money(guess['hi'], False)}")
-        nx["basis"].setText(f"From {guess['basis']} ({guess['samples']} shifts).")
-
         score = stats.prediction_accuracy(d)
-        nx["score"].setText(
-            f"Past guesses were off by about {money(score['median_err'], False)}, "
-            f"and {round(score['coverage'] * 10)} in 10 landed in the range."
-            if score else "")
+        detail = f"From {guess['basis']} ({guess['samples']} shifts)"
+        if score:
+            detail += (f"  ·  usually off by {money(score['median_err'], False)}"
+                       f"  ·  {round(score['coverage'] * 10)} in 10 in range")
+        nx["detail"].setText(detail)
 
     def _fill_forecast(self, fc, goal):
         f = self.fc
         if fc is None:
             f["projected"].setText("—")
             f["range"].setText("Log a few shifts to see a forecast")
-            for k in ("so_far", "left", "goal", "upcoming"):
+            for k in ("left", "likely", "goal", "upcoming"):
                 f[k].setText("")
             return
         f["projected"].setText(money(fc["projected"], False))
         f["range"].setText(f"Likely between {money(fc['low'], False)} and "
                            f"{money(fc['high'], False)}")
-        f["so_far"].setText(f"{money(fc['so_far'], False)} earned so far")
         scheduled, pending, likely = fc["scheduled"], fc["pending"], fc["likely"]
         if fc["source"] == "pace":
             n = len(fc["remaining"])
-            f["left"].setText(f"{n} shift{'s' if n != 1 else ''} expected at your "
-                              f"usual pace  ·  ~{money(fc['per_shift'], False)} each")
+            f["left"].setText(f"{money(fc['so_far'], False)} earned  ·  "
+                              f"{n} shift{'s' if n != 1 else ''} expected at "
+                              f"your usual pace")
         else:
             n = len(scheduled)
-            line = (f"{n} shift{'s' if n != 1 else ''} scheduled"
+            line = (f"{money(fc['so_far'], False)} earned  ·  "
+                    f"{n} shift{'s' if n != 1 else ''} scheduled"
                     f"  ·  ~{money(fc['scheduled_value'], False)}")
             if pending:
                 line += f"  ·  {len(pending)} worked, not logged yet"

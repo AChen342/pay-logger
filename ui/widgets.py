@@ -97,7 +97,7 @@ class Card(QFrame):
     """A white panel with a hairline border and an optional small caption
     at the top. Add content to `.body` (a QVBoxLayout)."""
 
-    def __init__(self, caption=None, padding=22, spacing=5):
+    def __init__(self, caption=None, padding=14, spacing=4):
         super().__init__()
         self.setObjectName("card")
         self.body = QVBoxLayout(self)
