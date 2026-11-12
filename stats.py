@@ -266,6 +266,66 @@ def goal_progress(goal, so_far, projected=None, per_shift=None):
     return out
 
 
+# --- Holidays -------------------------------------------------------------
+# A small built-in table (no external package). Each entry is a greeting
+# and, where the pattern is well known for a casual steakhouse, a note on
+# how the day tends to run against a normal shift -- so the forecast can
+# admit it's probably off rather than quietly predicting an ordinary day.
+# "tends" is a general-knowledge lean, not a promise.
+
+def _nth_weekday(year, month, weekday, n):
+    """Date of the n-th `weekday` (0=Monday) of a month, e.g. the 2nd
+    Sunday of May."""
+    from calendar import Calendar
+    days = [d for d in Calendar().itermonthdates(year, month)
+            if d.month == month and d.weekday() == weekday]
+    return days[n - 1]
+
+
+def _last_weekday(year, month, weekday):
+    from calendar import Calendar
+    days = [d for d in Calendar().itermonthdates(year, month)
+            if d.month == month and d.weekday() == weekday]
+    return days[-1]
+
+
+def _holiday_table(year):
+    """{date: (greeting, note, lean)} for one year. lean is 'up', 'down',
+    'closed' or None -- how the day usually runs vs a normal shift."""
+    from datetime import date as _date, timedelta as _td
+    thanksgiving = _nth_weekday(year, 11, 3, 4)   # 4th Thursday
+    table = {
+        _date(year, 1, 1):   ("Happy New Year!", "usually a bit busier than normal", "up"),
+        _date(year, 2, 14):  ("Happy Valentine's Day!", "casual spots often run normal or quieter — the fancy places get the rush", "down"),
+        _date(year, 3, 17):  ("Happy St. Patrick's Day!", None, None),
+        _nth_weekday(year, 5, 6, 2): ("Happy Mother's Day!", "one of the busiest serving days of the year", "up"),
+        _last_weekday(year, 5, 0):   ("Happy Memorial Day!", None, None),
+        _nth_weekday(year, 6, 6, 3): ("Happy Father's Day!", "usually well above a normal day", "up"),
+        _date(year, 7, 4):   ("Happy 4th of July!", None, None),
+        _nth_weekday(year, 9, 0, 1): ("Happy Labor Day!", None, None),
+        _date(year, 10, 31): ("Happy Halloween!", "usually slower — people are out trick-or-treating", "down"),
+        thanksgiving - _td(days=1): ("", "the night before Thanksgiving is one of the busiest bar nights", "up"),
+        thanksgiving:        ("Happy Thanksgiving!", "most locations are closed", "closed"),
+        _date(year, 12, 24): ("Merry Christmas Eve!", None, None),
+        _date(year, 12, 25): ("Merry Christmas!", "most locations are closed", "closed"),
+        _date(year, 12, 31): ("Happy New Year's Eve!", "casual dining often runs quieter", "down"),
+    }
+    return table
+
+
+def holiday(when):
+    """{greeting, note, lean} for a date that lands on a known holiday, or
+    None. lean: 'up' / 'down' / 'closed' / None."""
+    if when is None:
+        return None
+    when = pd.Timestamp(when).date()
+    entry = _holiday_table(when.year).get(when)
+    if entry is None:
+        return None
+    greeting, note, lean = entry
+    return {"greeting": greeting, "note": note, "lean": lean}
+
+
 # --- Next-shift prediction ------------------------------------------------
 # Tuned on real history: a 120-day window beat 60, 90, 365 and all-time, and
 # the 5th-95th percentiles of the sample turned out to cover about three

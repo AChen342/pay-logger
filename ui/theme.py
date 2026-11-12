@@ -35,6 +35,7 @@ PALETTES = {
         INFO="#6aa6e8",      # projections
         WARNING="#dda55c",   # behind on a goal, unlogged shifts
         DANGER="#d9796b",    # tip-outs, delete
+        HOLIDAY="#b98cd9",   # holiday greeting (a festive note, dark)
         # Shades that only the stylesheet needs.
         ON_PRIMARY="#16181a",    # text on the one solid button
         PRIMARY_HOVER="#ffffff",
@@ -62,6 +63,7 @@ PALETTES = {
         INFO="#4a7db5",
         WARNING="#9a6b1e",
         DANGER="#b5503f",
+        HOLIDAY="#8257b5",   # holiday greeting (light)
         ON_PRIMARY="#ffffff",
         PRIMARY_HOVER="#34383d",
         PRIMARY_OFF="#b6babe",
@@ -159,6 +161,7 @@ _QSS = """
     QLabel[tone="info"]    { color: %(INFO)s; }
     QLabel[tone="warning"] { color: %(WARNING)s; }
     QLabel[tone="danger"]  { color: %(DANGER)s; }
+    QLabel[tone="holiday"] { color: %(HOLIDAY)s; font-weight: bold; }
 
     /* --- Buttons ----------------------------------------------------- */
     /* Quiet by default; one solid button per screen carries the action. */

@@ -45,6 +45,10 @@ class Dashboard(Screen):
         titles.addWidget(label("Pay Logger", role="title"))
         self.subtitle = label("", role="muted")
         titles.addWidget(self.subtitle)
+        # A festive line on the day itself (e.g. "Happy Mother's Day!").
+        self.greeting = label("", tone="holiday", role="head")
+        self.greeting.setVisible(False)
+        titles.addWidget(self.greeting)
         title_host = QWidget()
         title_host.setLayout(titles)
 
@@ -97,10 +101,12 @@ class Dashboard(Screen):
         self.nx["when"] = label("", role="muted")
         self.nx["mid"] = label("—", role="big")
         self.nx["range"] = label("", role="muted")
+        self.nx["holiday"] = label("", tone="holiday", wrap=True)
         self.nx["detail"] = label("", role="muted", wrap=True)
         for key in ("when", "mid", "range"):
             ncard.body.addWidget(self.nx[key])
         ncard.body.addSpacing(8)
+        ncard.body.addWidget(self.nx["holiday"])
         ncard.body.addWidget(self.nx["detail"])
         ncard.body.addStretch(1)
 
@@ -176,6 +182,10 @@ class Dashboard(Screen):
         app = self.app
         today = app.today()
         self.subtitle.setText(f"{today:%A, %B} {today.day}")
+        today_holiday = stats.holiday(today)
+        greeting = today_holiday["greeting"] if today_holiday else ""
+        self.greeting.setText(greeting)
+        self.greeting.setVisible(bool(greeting))
         self._fill_missed()
 
         d = stats.shifts(app.logger.df)
@@ -239,6 +249,22 @@ class Dashboard(Screen):
         upcoming = self.app.upcomingShifts
         when = upcoming[0] if upcoming else None
         guess = stats.predict_shift(d, when) if when else None
+
+        # A festive heads-up when the shift lands on a holiday, with the
+        # caveat that the estimate below probably doesn't fit the day.
+        hol = stats.holiday(when) if when else None
+        if hol:
+            lean = {"up": "likely busier than a normal "
+                          f"{when:%A} — this may read low",
+                    "down": "often slower than a normal "
+                            f"{when:%A} — this may read high",
+                    "closed": "most locations are closed"}.get(hol["lean"])
+            parts = [p for p in (hol["greeting"], lean) if p]
+            nx["holiday"].setText("  ·  ".join(parts))
+            nx["holiday"].setVisible(True)
+        else:
+            nx["holiday"].setText("")
+            nx["holiday"].setVisible(False)
 
         if guess is None:
             for key in ("mid", "range", "detail"):
