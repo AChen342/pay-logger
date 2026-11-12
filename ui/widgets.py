@@ -162,19 +162,29 @@ class DateEdit(QDateEdit):
 
 # --- Table ----------------------------------------------------------------
 
+_EPOCH = datetime(1970, 1, 1)
+
+
 def _sort_key(text):
-    """What a cell should sort by: a date, a number, or its text."""
+    """What a cell should sort by: a date, a number, or its text.
+
+    Never raises -- a cell that can't be read sorts as text. One bad cell
+    used to take down the whole screen it was drawn on.
+    """
     s = str(text).strip()
     if not s:
         return (0, 0.0)
     for fmt in ("%m/%d/%Y", "%a %m/%d", "%m/%d/%y", "%m/%Y"):
         try:
-            return (1, datetime.strptime(s, fmt).timestamp())
-        except ValueError:
+            # Subtracting the epoch rather than calling .timestamp():
+            # a date with no year parses as 1900, and Windows refuses to
+            # convert that ("OSError: [Errno 22] Invalid argument").
+            return (1, (datetime.strptime(s, fmt) - _EPOCH).total_seconds())
+        except (ValueError, OverflowError, OSError):
             pass
     try:
         return (1, float(s.replace("$", "").replace(",", "").replace("/hr", "")))
-    except ValueError:
+    except (ValueError, TypeError):
         return (2, s.lower())
 
 
