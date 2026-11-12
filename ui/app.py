@@ -12,8 +12,9 @@ import threading
 import traceback
 
 from PySide6.QtCore import QTimer, Qt, Signal
-from PySide6.QtGui import QIcon
-from PySide6.QtWidgets import QApplication, QMainWindow, QStackedWidget
+from PySide6.QtGui import QAction, QIcon
+from PySide6.QtWidgets import (QApplication, QMainWindow, QMenu,
+                               QStackedWidget, QSystemTrayIcon)
 
 import goals
 import logger
@@ -101,8 +102,23 @@ class App(QMainWindow):
 
         self.taskFinished.connect(self._task_finished)
 
-        if startMinimized:
-            self.showMinimized()
+        # Live in the system tray like Discord: closing the window hides it
+        # there instead of quitting, so the calendar re-check keeps running
+        # in the background. Only Quit (the button or the tray menu) really
+        # exits, so the app must not quit when its last window is hidden.
+        self._really_quit = False
+        self._tray = None
+        qapp.setQuitOnLastWindowClosed(False)
+        self._build_tray()
+
+        if startMinimized and self._tray is not None:
+            # Start in the tray, Discord-style: no window, just the icon.
+            # If shifts still need logging, a tray notification says so
+            # rather than taking over the screen.
+            if self.missedDates:
+                self._notify_unlogged()
+        elif startMinimized:
+            self.showMinimized()   # no tray available: fall back to taskbar
         else:
             self.showMaximized()
 
@@ -142,6 +158,72 @@ class App(QMainWindow):
             goals.save_workdays(self.workdays)
         self._uiVersion += 1
         self.show_page(self._page)
+
+    # --- System tray ------------------------------------------------------
+    def _build_tray(self):
+        """A tray icon that outlives the window. Left-click (or double-click)
+        opens the app; its menu offers Open and Quit. Skipped when the
+        desktop has no system tray, in which case the window behaves
+        normally (minimize to taskbar, close to quit)."""
+        if not QSystemTrayIcon.isSystemTrayAvailable():
+            return
+        self._tray = QSystemTrayIcon(self.windowIcon(), self)
+        self._tray.setToolTip("Pay Logger")
+        menu = QMenu()
+        open_action = QAction("Open Pay Logger", self)
+        open_action.triggered.connect(self._show_from_tray)
+        quit_action = QAction("Quit", self)
+        quit_action.triggered.connect(self.quit_app)
+        menu.addAction(open_action)
+        menu.addSeparator()
+        menu.addAction(quit_action)
+        self._tray.setContextMenu(menu)
+        self._tray.activated.connect(self._tray_activated)
+        self._tray.messageClicked.connect(self._show_from_tray)
+        self._tray.show()
+
+    def _tray_activated(self, reason):
+        # A plain click or double-click opens the window; the right-click
+        # menu is handled by Qt. (Middle-click and hover do nothing.)
+        if reason in (QSystemTrayIcon.ActivationReason.Trigger,
+                      QSystemTrayIcon.ActivationReason.DoubleClick):
+            self._show_from_tray()
+
+    def _show_from_tray(self):
+        """Bring the window out of the tray, maximized and in front."""
+        self.showNormal()
+        self.showMaximized()
+        self.raise_()
+        self.activateWindow()
+
+    def _notify_unlogged(self):
+        """A tray balloon listing shifts that still need logging."""
+        if self._tray is None:
+            return
+        pending = self.unlogged_dates()
+        if not pending:
+            return
+        noun = "shift" if len(pending) == 1 else "shifts"
+        self._tray.showMessage(
+            "Pay Logger",
+            f"You have {len(pending)} unlogged {noun} — click to log.",
+            self.windowIcon(), 8000)
+
+    def quit_app(self):
+        """Really exit (the window's close button only hides to the tray)."""
+        self._really_quit = True
+        if self._tray is not None:
+            self._tray.hide()
+        self._qapp.quit()
+
+    def closeEvent(self, event):
+        """Closing the window hides it to the tray rather than quitting, so
+        the background calendar re-check keeps running. Quit exits."""
+        if self._really_quit or self._tray is None:
+            event.accept()
+        else:
+            event.ignore()
+            self.hide()
 
     # --- Navigation -------------------------------------------------------
     def show_page(self, name):

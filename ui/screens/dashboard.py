@@ -52,7 +52,7 @@ class Dashboard(Screen):
                               lambda _=False, p=page: app.show_page(p))
                for text, page, variant in NAV]
         nav.append(widgets.button("Settings", "ghost", self.edit_goals))
-        nav.append(widgets.button("Quit", "ghost", app.close))
+        nav.append(widgets.button("Quit", "ghost", app.quit_app))
         self.body.addWidget(row(title_host, None, *nav, spacing=6))
 
         self.missed = label("", tone="warning", role="figure")
@@ -221,7 +221,7 @@ class Dashboard(Screen):
             pass
         else:
             bar.setValue(int(gp["pct"] * 100))
-            bar.setProperty("tone", "" if gp["pct"] >= 1 else "muted")
+            bar.setProperty("tone", "")   # always green, filled or not
             if gp["left"] <= 0:
                 lb.setText(f"✓  {money(goal, False)} goal reached")
                 widgets.tone(lb, "accent")

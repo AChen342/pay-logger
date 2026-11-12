@@ -228,11 +228,14 @@ def main(show=False):
     if missed:
         print("Unlogged shifts: " + ", ".join(f"{d:%m/%d/%Y}" for d in missed))
     else:
-        print("All recent shifts are logged." + ("" if show else " Opening minimized."))
+        print("All recent shifts are logged.")
 
+    # A normal launch (login / Task Scheduler) starts in the system tray,
+    # like Discord; unlogged shifts get a tray notification rather than a
+    # window taking over. dashboard.pyw / --open opens the window directly.
     App(log, missedDates=missed, upcomingShifts=scan["upcoming"],
         shiftStarts=scan["shift_starts"],
-        startMinimized=not missed and not show,
+        startMinimized=not show,
         rescan=lambda: scan_calendar(log),
         rescanMinutes=REFRESH_MINUTES).mainloop()
 
