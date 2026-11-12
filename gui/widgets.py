@@ -11,6 +11,8 @@ import ttkbootstrap as ttk
 from ttkbootstrap.constants import *
 from ttkbootstrap import Tableview
 
+from . import formatting
+
 
 def makeHeader(parent, title, master, backTo=None):
     """Top app-bar: page title on the left, a "← Home" button on the right
@@ -29,13 +31,19 @@ def makeHeader(parent, title, master, backTo=None):
     return bar
 
 
+# Text columns are left-aligned wherever they appear; everything else is a
+# number and right-aligned.
+TEXT_COLUMNS = {"Type", "Section", "Notes", "Shift Type", "Day", "Group"}
+
+
 def cols(headers):
-    """Build Tableview column specs: first column left-anchored (label),
-    remaining columns right-anchored (numeric), matching how Google Sheets
+    """Build Tableview column specs: first column and text columns left-
+    anchored, numeric columns right-anchored, matching how Google Sheets
     aligns this data.
     """
     return [
-        {"text": h, "anchor": (W if i == 0 else E), "stretch": True}
+        {"text": h, "anchor": (W if i == 0 or h in TEXT_COLUMNS else E),
+         "stretch": True}
         for i, h in enumerate(headers)
     ]
 
@@ -240,3 +248,150 @@ class DatePicker(ttk.Frame):
             self.entry.insert(0, d.strftime(self.FMT))
         if notify:
             self.event_generate("<<DateEntrySelected>>")
+
+
+# --- Dashboard building blocks --------------------------------------------
+
+def card(parent, title, app, padding=18):
+    """A bordered panel with a small caption on top (the look of the Tips
+    graph's summary tiles, bigger). Returns (outer, body): grid/pack
+    `outer`, put content in `body`."""
+    outer = ttk.Frame(parent, padding=1, bootstyle="secondary")
+    body = ttk.Frame(outer, padding=padding)
+    body.pack(fill=BOTH, expand=YES)
+    if title:
+        ttk.Label(body, text=title.upper(), font=app.FONT_SMALL,
+                  bootstyle="secondary").pack(anchor="w")
+    return outer, body
+
+
+def statTile(parent, caption, app):
+    """Small caption + big value tile. Returns (tile, value_label)."""
+    outer, body = card(parent, None, app, padding=(16, 10))
+    ttk.Label(body, text=caption, font=app.FONT_SMALL,
+              bootstyle="secondary").pack(anchor="w")
+    value = ttk.Label(body, text="—", font=app.FONT_HEAD)
+    value.pack(anchor="w")
+    return outer, value
+
+
+class ShiftForm(ttk.Frame):
+    """Every field of a shift, laid out in two columns, with a live
+    take-home / per-hour readout. Used by Add Shift and the Edit dialog.
+
+    `get()` -> (entry dict for Logger.addTip/editLog, None) or
+    (None, error message). `set(row)` fills it from a Daily-sheet row.
+    """
+
+    def __init__(self, master, app, sections=()):
+        super().__init__(master)
+        self.app = app
+        lbl = lambda text, r, c: ttk.Label(self, text=text, font=app.FONT_BOLD).grid(
+            row=r, column=c, sticky="w", pady=8, padx=(0 if c == 0 else 36, 14))
+
+        # Left column: when / what.
+        lbl("Date", 0, 0)
+        self.date = DatePicker(self)
+        self.date.grid(row=0, column=1, sticky="w")
+        lbl("Shift Type", 1, 0)
+        self.shiftType = ttk.Combobox(self, values=_shiftTypes(), width=12,
+                                      state="readonly")
+        self.shiftType.grid(row=1, column=1, sticky="w")
+        lbl("Section", 2, 0)
+        self.section = ttk.Combobox(self, values=list(sections), width=12)
+        self.section.grid(row=2, column=1, sticky="w")
+        lbl("Hours Worked", 3, 0)
+        self.hours = self._money(3, 1)
+
+        # Right column: money.
+        lbl("Card Tips", 0, 2)
+        self.card = self._money(0, 3)
+        lbl("Cash Tips", 1, 2)
+        self.cash = self._money(1, 3)
+        lbl("Tip Out", 2, 2)
+        self.tipOut = self._money(2, 3)
+        lbl("Notes", 3, 2)
+        self.notes = ttk.Entry(self, width=34)
+        self.notes.grid(row=3, column=3, sticky="w")
+
+        self.preview = ttk.Label(self, text="", font=app.FONT_BOLD, bootstyle="success")
+        self.preview.grid(row=4, column=0, columnspan=4, sticky="w", pady=(14, 0))
+        for e in (self.hours, self.card, self.cash, self.tipOut):
+            e.bind("<KeyRelease>", lambda ev: self.updatePreview(), add="+")
+        self.updatePreview()
+
+    def _money(self, r, c):
+        e = ttk.Entry(self, width=14, validate="key", validatecommand=self.app.moneyCmd)
+        e.grid(row=r, column=c, sticky="w")
+        return e
+
+    @staticmethod
+    def _f(entry):
+        try:
+            return float(entry.get())
+        except ValueError:
+            return None
+
+    def updatePreview(self):
+        card, cash = self._f(self.card) or 0, self._f(self.cash) or 0
+        out, hours = self._f(self.tipOut) or 0, self._f(self.hours) or 0
+        net = card + cash - out
+        if not (card or cash or out):
+            self.preview.config(text="")
+            return
+        per = f"   ·   {formatting.money(net / hours)}/hr" if hours > 0 else ""
+        self.preview.config(text=f"Take-home  {formatting.money(net)}{per}")
+
+    def clearAmounts(self):
+        for e in (self.hours, self.card, self.cash, self.tipOut, self.notes):
+            e.delete(0, tk.END)
+        self.updatePreview()
+
+    def set(self, row):
+        """Fill every field from a Daily-sheet row (a pandas Series)."""
+        self.date.set_date(datetime.strptime(formatting.fmtDate(row["Date"]), "%m/%d/%Y"),
+                           notify=False)
+        self.shiftType.set(formatting.text(row.get("Shift Type")))
+        self.section.set(formatting.text(row.get("Section")))
+        for e, col in ((self.hours, "Hours"), (self.card, "Card"),
+                       (self.cash, "Cash"), (self.tipOut, "Tip Out")):
+            e.delete(0, tk.END)
+            v = formatting.num(row.get(col))
+            if v or col != "Tip Out":
+                e.insert(0, formatting.fmt(v))
+        self.notes.delete(0, tk.END)
+        self.notes.insert(0, formatting.text(row.get("Notes")))
+        self.updatePreview()
+
+    def get(self):
+        date = self.date.get_date(mark_invalid=True)
+        if date is None:
+            return None, "*Invalid date!"
+        if not (self.card.get() and self.cash.get() and self.hours.get()):
+            return None, "*Please fill in card tips, cash tips and hours!"
+        if not self.shiftType.get():
+            return None, "*Please pick a shift type!"
+        return {
+            "date": date.strftime("%m/%d/%Y"),
+            "card": float(self.card.get()),
+            "cash": float(self.cash.get()),
+            "hours": float(self.hours.get()),
+            "tipOut": self._f(self.tipOut) or 0.0,
+            "shiftType": self.shiftType.get(),
+            "section": self.section.get().strip(),
+            "notes": self.notes.get().strip(),
+        }, None
+
+
+def _shiftTypes():
+    import logger  # top-level module; imported lazily to keep widgets light
+    return list(logger.SHIFT_TYPES)
+
+
+def sectionsUsed(df):
+    """Sections already used in the Daily sheet, most-used first (for the
+    Section dropdown)."""
+    if df is None or df.empty or "Section" not in df.columns:
+        return []
+    s = df["Section"].map(formatting.text)
+    return list(s[s != ""].value_counts().index)

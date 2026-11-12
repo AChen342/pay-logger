@@ -14,7 +14,7 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from . import charts, widgets
 
 # (key, caption) for the summary tiles, in display order.
-STAT_TILES = (("total", "Total tips"), ("avg_shift", "Avg per shift"),
+STAT_TILES = (("total", "Take-home"), ("avg_shift", "Avg per shift"),
               ("avg_hour", "Avg per hour"), ("hours", "Hours worked"),
               ("best", "Best day"))
 
@@ -36,6 +36,7 @@ class TipsGraph(ttk.Frame):
         self._bg = None         # cached render the hover artists blit over
         self._hoverIdx = None   # bar currently highlighted
         self._lastKey = None    # (view, metric, from, to) of the last draw
+        self._stamp = None      # App.stamp() of the last draw
 
         self._buildControls()
         self._buildStats()
@@ -91,8 +92,12 @@ class TipsGraph(ttk.Frame):
             self._stat[key].pack(anchor="w")
 
     # --- Range + drawing -------------------------------------------------
-    def refresh(self):
-        """Reset to the default range and redraw from current data."""
+    def refresh(self, onlyIfChanged=False):
+        """Reset to the default range and redraw from current data. With
+        `onlyIfChanged`, do nothing if the data hasn't changed since the
+        last draw (keeps the range you picked)."""
+        if onlyIfChanged and self._stamp == self.app.stamp():
+            return
         self._lastKey = None
         self._resetRange()
 
@@ -112,6 +117,7 @@ class TipsGraph(ttk.Frame):
         if key == self._lastKey and self._canvas is not None:
             return
         self._lastKey = key
+        self._stamp = self.app.stamp()
 
         df = self.app.logger.df
         self._updateStats(charts.summary(df, start, end))

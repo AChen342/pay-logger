@@ -1,8 +1,5 @@
-"""Add New Log: form to submit a shift's tips/hours, plus a table of the
-most recent entries."""
-import tkinter as tk
-from datetime import datetime
-
+"""Add Shift: form to log a shift's tips, hours, tip-out and details, plus
+a table of the most recent entries."""
 import ttkbootstrap as ttk
 from ttkbootstrap.constants import *
 
@@ -10,114 +7,117 @@ from .. import formatting, pages, widgets
 
 
 class NewLog(ttk.Frame):
-    """"Add New Log" screen."""
+    """"Add Shift" screen."""
 
-    HEADERS = ["Date", "Hours", "Card", "Cash", "Total"]
+    HEADERS = formatting.TIP_HEADERS
 
     def __init__(self, master):
         super().__init__(master)
-        widgets.makeHeader(self, "Add New Log", master, backTo=pages.HOME)
+        widgets.makeHeader(self, "Add Shift", master, backTo=pages.HOME)
 
         body = ttk.Frame(self)
         body.pack(fill=BOTH, expand=YES, padx=32, pady=(0, 30))
         body.grid_columnconfigure(0, weight=1)
-        body.grid_rowconfigure(1, weight=1)
+        body.grid_rowconfigure(3, weight=1)
 
-        ttk.Label(body, text="Recent Entries", font=master.FONT_HEAD).grid(
-            row=0, column=0, sticky="w", pady=(0, 12))
-        self.table = widgets.makeTable(body, self.HEADERS, height=8)
-        self.table.grid(row=1, column=0, sticky="nsew", pady=(0, 28))
+        formBox = ttk.Labelframe(body, text="Shift Details", padding=24)
+        formBox.grid(row=0, column=0, sticky="ew")
+        self.form = widgets.ShiftForm(formBox, master,
+                                      widgets.sectionsUsed(master.logger.df))
+        self.form.pack(anchor="w")
 
-        form = ttk.Labelframe(body, text="Log Details", padding=24)
-        form.grid(row=2, column=0, sticky="ew")
-        form.grid_columnconfigure(1, weight=1)
-
-        ttk.Label(form, text="Date", font=master.FONT_BOLD).grid(
-            row=0, column=0, sticky="w", pady=10, padx=(0, 18))
-        dateFrame = ttk.Frame(form)
-        dateFrame.grid(row=0, column=1, sticky="w", pady=10)
-        self.month = ttk.Entry(dateFrame, width=4, validate="key", validatecommand=master.monthCmd)
-        self.month.pack(side=LEFT)
-        ttk.Label(dateFrame, text="/", font=master.FONT_BOLD).pack(side=LEFT, padx=4)
-        self.day = ttk.Entry(dateFrame, width=4, validate="key", validatecommand=master.dayCmd)
-        self.day.pack(side=LEFT)
-        ttk.Label(dateFrame, text="/", font=master.FONT_BOLD).pack(side=LEFT, padx=4)
-        self.year = ttk.Entry(dateFrame, width=6, validate="key", validatecommand=master.yearCmd)
-        self.year.pack(side=LEFT)
-        widgets.CalendarButton(
-            dateFrame,
-            lambda: self.master.validateFullDate(self.month.get(), self.day.get(), self.year.get()),
-            lambda d: widgets.fillDateBoxes(d, self.month, self.day, self.year),
-        ).pack(side=LEFT, padx=(8, 0))
-
-        fields = [
-            ("Card Tip", "cardTip"),
-            ("Cash Tip", "cashTip"),
-            ("Hours Worked", "hours"),
-        ]
-        for i, (label, attr) in enumerate(fields, start=1):
-            ttk.Label(form, text=label, font=master.FONT_BOLD).grid(
-                row=i, column=0, sticky="w", pady=10, padx=(0, 18))
-            entry = ttk.Entry(form, width=22, validate="key", validatecommand=master.moneyCmd)
-            entry.grid(row=i, column=1, sticky="w", pady=10)
-            setattr(self, attr, entry)
-
-        btnRow = ttk.Frame(form)
-        btnRow.grid(row=len(fields) + 1, column=0, columnspan=2, sticky="w", pady=(18, 0))
-        ttk.Button(btnRow, text="Submit", bootstyle="primary", width=12,
+        btnRow = ttk.Frame(formBox)
+        btnRow.pack(anchor="w", pady=(18, 0))
+        ttk.Button(btnRow, text="Save Shift", bootstyle="primary", width=14,
                    command=self.submitLog).pack(side=LEFT, padx=(0, 10), ipady=6)
         ttk.Button(btnRow, text="Back", bootstyle="secondary-outline", width=12,
                    command=lambda: master.showFrame(pages.HOME)).pack(side=LEFT, ipady=6)
+        self.errMessage = ttk.Label(btnRow, text="", bootstyle="danger", font=master.FONT)
+        self.errMessage.pack(side=LEFT, padx=(18, 0))
 
-        self.errMessage = ttk.Label(form, text="", bootstyle="danger", font=master.FONT)
-        self.errMessage.grid(row=len(fields) + 2, column=0, columnspan=2, sticky="w", pady=(12, 0))
+        ttk.Label(body, text="Recent Entries", font=master.FONT_HEAD).grid(
+            row=2, column=0, sticky="w", pady=(28, 12))
+        self.table = widgets.makeTable(body, self.HEADERS, height=8)
+        self.table.grid(row=3, column=0, sticky="nsew")
 
+        self._drawn = None
         self.refreshDisplay()
         self._autoDate = None
+        self.form.date.bind("<<DateEntrySelected>>", lambda e: self._guessType(), add="+")
         self.setToday()
-        # The app stays open across days, so whenever this screen is shown
-        # again, move an untouched default date forward to the new today.
-        self.bind("<Map>", lambda e: self.setToday(onlyIfUntouched=True))
 
-    def _dateBoxes(self):
-        return (self.month.get(), self.day.get(), self.year.get())
+    def onShow(self):
+        """Called by App.showFrame each time this screen is shown. The app
+        stays open across days (and logs can be deleted elsewhere), so move
+        an untouched default date forward to the current next-unlogged
+        shift / today."""
+        self.setToday(onlyIfUntouched=True)
+        if self._drawn != self.master.stamp():
+            self.refreshDisplay()
 
     def setToday(self, onlyIfUntouched=False):
-        """Default the date to today. With `onlyIfUntouched`, leave it alone
-        if the user has typed or picked a different date."""
-        if onlyIfUntouched and self._autoDate is not None and self._dateBoxes() != self._autoDate:
+        """Default the date to the oldest shift that still needs logging
+        (see App.unloggedDates), or today if there isn't one. With
+        `onlyIfUntouched`, leave it alone if the user has typed or picked a
+        different date."""
+        entry = self.form.date.entry
+        if onlyIfUntouched and self._autoDate is not None and entry.get() != self._autoDate:
             return
-        widgets.fillDateBoxes(datetime.now(), self.month, self.day, self.year)
-        self._autoDate = self._dateBoxes()
+        pending = self.master.unloggedDates()
+        d = pending[0] if pending else self.master.today()
+        self.form.date.set_date(_asDatetime(d), notify=False)
+        self._autoDate = entry.get()
+        self._guessType()
+
+    def _guessType(self):
+        """Pre-pick Lunch/Dinner from the calendar shift's start time for
+        the chosen date; otherwise keep whatever was last picked."""
+        d = self.form.date.get_date()
+        start = self.master.shiftStarts.get(d.date()) if d else None
+        if start is not None and start.hour + start.minute / 60 > 0:
+            self.form.shiftType.set("Lunch" if start.hour < 15 else "Dinner")
+        elif not self.form.shiftType.get():
+            self.form.shiftType.set(_lastUsedType(self.master.logger.df) or "Dinner")
 
     def submitLog(self):
-        """Validate the form and, if it's complete and the date is real,
-        append a new tip entry and refresh the table."""
-        month, day, year = self.month.get(), self.day.get(), self.year.get()
-        card, cash, hours = self.cardTip.get(), self.cashTip.get(), self.hours.get()
-
-        if not (month and day and year and card and cash and hours):
-            self.errMessage.config(text="*Please fill in all fields!")
+        """Validate the form and, if it's complete, save the shift and
+        refresh the table."""
+        entry, err = self.form.get()
+        if err:
+            self.errMessage.config(text=err)
             return
-
-        date = self.master.validateFullDate(month, day, year)
-        if date is None:
-            self.errMessage.config(text="*Invalid date!")
-            return
-
-        self.errMessage.config(text="")
-        self.master.logger.addTip((date.strftime("%m/%d/%Y"), float(card), float(cash), float(hours)))
-        self.clearEntries()
+        # Saving rewrites the Google Sheet, which takes a moment -- say so
+        # instead of looking frozen.
+        self.errMessage.config(text="Saving…", bootstyle="secondary")
+        self.update_idletasks()
+        try:
+            self.master.logger.addTip(entry)
+        except Exception as e:
+            self.errMessage.config(text=f"*Couldn't save ({type(e).__name__}) — check your connection",
+                                   bootstyle="danger")
+            raise
+        self.errMessage.config(text="", bootstyle="danger")
+        self.form.clearAmounts()
+        self.form.section.configure(values=widgets.sectionsUsed(self.master.logger.df))
         self.refreshDisplay()
-
-    def clearEntries(self):
-        """Clear the amounts and reset the date to today after a successful submit."""
-        for w in (self.cardTip, self.cashTip, self.hours):
-            w.delete(0, tk.END)
-        self.setToday()  # date goes back to today, ready for the next log
+        self.setToday()  # next unlogged shift (or today), ready for the next log
 
     def refreshDisplay(self):
-        """Reload the "Recent Entries" table from the logger's current
-        data (the 10 most recent tip logs)."""
-        logs = self.master.logger.df.tail(10)
+        """Reload the "Recent Entries" table (the 10 most recent logs,
+        newest first)."""
+        self._drawn = self.master.stamp()
+        logs = self.master.logger.df.tail(10)[::-1]
         widgets.loadTable(self.table, self.HEADERS, formatting.tip_rows(logs))
+
+
+def _asDatetime(d):
+    from datetime import datetime
+    return d if isinstance(d, datetime) else datetime(d.year, d.month, d.day)
+
+
+def _lastUsedType(df):
+    if df is None or df.empty or "Shift Type" not in df.columns:
+        return None
+    s = df["Shift Type"].map(formatting.text)
+    s = s[s != ""]
+    return s.iloc[-1] if len(s) else None

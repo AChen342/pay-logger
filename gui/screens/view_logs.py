@@ -19,7 +19,7 @@ class ViewLogs(ttk.Frame):
     """"View Logs" screen. One Tableview is reused for all five tabs --
     each nav button just reloads it with a different DataFrame/headers."""
 
-    TIP_HEADERS = ["Date", "Hours", "Card", "Cash", "Total"]
+    TIP_HEADERS = formatting.TIP_HEADERS
     PAYDAY_HEADERS = ["Start", "End", "Hours", "Gross", "Tax", "Work Pay",
                        "Card", "Cash", "Tips", "Before Tax", "After Tax", "Hourly"]
 
@@ -33,6 +33,7 @@ class ViewLogs(ttk.Frame):
         body.grid_rowconfigure(1, weight=1)
 
         self._kind = "tips"       # which tab is showing
+        self._loaded = None       # (tab, App.stamp()) the table last showed
         self._graphMode = False   # table vs. graph (Tips tab only)
 
         nav = ttk.Frame(body)
@@ -64,6 +65,14 @@ class ViewLogs(ttk.Frame):
         self._setGraphMode(False)
         self._show("tips")
 
+    def onShow(self):
+        """Reload the current tab each time the screen is shown, so logs
+        added on other screens show up."""
+        if self._graphMode:
+            self.graph.refresh(onlyIfChanged=True)
+        else:
+            self._loadTable()
+
     # --- Tabs ---------------------------------------------------------
     def _show(self, kind):
         """Switch tabs. Graph View exists only for Tips, so any other tab
@@ -75,14 +84,14 @@ class ViewLogs(ttk.Frame):
             self.modeBtn.grid_remove()
             self._setGraphMode(False)
         if self._graphMode:
-            self.graph.refresh()
+            self.graph.refresh(onlyIfChanged=True)
         else:
             self._loadTable()
 
     def toggleMode(self):
         self._setGraphMode(not self._graphMode)
         if self._graphMode:
-            self.graph.refresh()  # logs may have changed since last shown
+            self.graph.refresh(onlyIfChanged=True)  # redraw only if logs changed
         else:
             self._loadTable()
 
@@ -103,6 +112,10 @@ class ViewLogs(ttk.Frame):
         """Fill the table for the current tab, most recent row first."""
         lg = self.master.logger
         kind = self._kind
+        key = (kind, self.master.stamp())
+        if key == self._loaded:
+            return  # already showing exactly this
+        self._loaded = key
         if kind == "tips":
             headers, rows = self.TIP_HEADERS, formatting.tip_rows(lg.df[::-1])
         elif kind == "payday":
@@ -110,6 +123,6 @@ class ViewLogs(ttk.Frame):
         else:
             col, fmt = PERIOD_TABS[kind]
             df = {"weekly": lg.dfWeekly, "monthly": lg.dfMonthly, "yearly": lg.dfYearly}[kind]
-            headers = [col, "Hours", "Card", "Cash", "Total Tip"]
+            headers = [col, "Hours", "Card", "Cash", "Take-home"]
             rows = formatting.period_rows(df[::-1], col, fmt)
         widgets.loadTable(self.table, headers, rows)

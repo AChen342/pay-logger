@@ -15,7 +15,8 @@ Read this first if you're new to the codebase:
         app.py           The App class: the window itself, page navigation,
                           and the date/money input validators every screen
                           shares.
-        screens/         One module per screen (home.py, new_log.py, ...).
+        screens/         One module per screen (home.py = Dashboard,
+                          new_log.py = Add Shift, insights.py, ...).
                           Each screen only knows about gui.pages, gui.widgets
                           and gui.formatting -- never about the other
                           screens or about App -- so any one of them can be
@@ -32,8 +33,9 @@ from .screens.new_log import NewLog
 from .screens.view_logs import ViewLogs
 from .screens.delete_logs import DeleteLogs
 from .screens.new_payday import NewPayDay
+from .screens.insights import Insights
 
 __all__ = [
     "App", "pages",
-    "HomeScreen", "NewLog", "ViewLogs", "DeleteLogs", "NewPayDay",
+    "HomeScreen", "NewLog", "ViewLogs", "DeleteLogs", "NewPayDay", "Insights",
 ]

@@ -1,6 +1,8 @@
-"""Turns raw spreadsheet values into the display strings every screen's
-table shows, plus the row-tuple builders that used to be duplicated across
-NewLog/ViewLogs/DeleteLogs/NewPayDay.
+"""Turns raw spreadsheet values into the display strings the tables show,
+plus the row-tuple builders every screen shares.
+
+Pure pandas -- no GUI toolkit -- so both the Qt UI (`ui/`) and the old Tk
+one (`gui/`) use the same formatting.
 """
 from datetime import datetime
 
@@ -48,9 +50,57 @@ def fmtDate(v, fmt="%m/%d/%Y"):
 # strings. Centralizing that here means the formatting has only one place
 # to be right -- and one place to fix, the day the sheet's columns change.
 
+# Columns every tip-log table shows (Add Shift, View Logs, Edit/Delete).
+TIP_HEADERS = ["Date", "Type", "Hours", "Card", "Cash", "Tip Out",
+               "Take-home", "$/hr", "Section", "Notes"]
+
+
+def money(v, cents=True):
+    """$1,234.56 (or $1,235 with cents=False)."""
+    try:
+        v = float(v)
+    except (TypeError, ValueError):
+        return "—"
+    return f"${v:,.2f}" if cents else f"${v:,.0f}"
+
+
+def text(v):
+    """A sheet cell as display text ('' for blanks/NaN)."""
+    if v is None or (isinstance(v, float) and pd.isna(v)):
+        return ""
+    s = str(v).strip()
+    return "" if s.lower() == "nan" else s
+
+
+def num(v):
+    """A sheet cell as a float (0 for blanks)."""
+    try:
+        f = float(v)
+        return 0.0 if pd.isna(f) else f
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def parse_date(v, fmt="%m/%d/%Y"):
+    """A sheet cell as a datetime.date, or None if it isn't date-shaped."""
+    s = fmtDate(v, fmt)
+    try:
+        return datetime.strptime(s, fmt).date()
+    except (ValueError, TypeError):
+        return None
+
+
 def tip_row(r):
-    """One Daily-sheet row -> (Date, Hours, Card, Cash, Total)."""
-    return (fmtDate(r['Date']), fmt(r['Hours']), fmt(r['Card']), fmt(r['Cash']), fmt(r['Total Tip']))
+    """One Daily-sheet row -> TIP_HEADERS display strings. Take-home is
+    Card + Cash - Tip Out; rows from before shift details existed just
+    show blanks for Type/Section/Notes."""
+    hours = num(r.get('Hours'))
+    net = num(r.get('Card')) + num(r.get('Cash')) - num(r.get('Tip Out'))
+    return (fmtDate(r['Date']), text(r.get('Shift Type')), fmt(hours),
+            fmt(num(r.get('Card'))), fmt(num(r.get('Cash'))),
+            fmt(num(r.get('Tip Out'))), fmt(net),
+            fmt(net / hours) if hours > 0 else "",
+            text(r.get('Section')), text(r.get('Notes')))
 
 
 def tip_rows(df):

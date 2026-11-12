@@ -9,52 +9,37 @@ from .. import formatting, pages, widgets
 
 
 class EditLogDialog(tk.Toplevel):
-    """Modal form for changing one tip log's date, card, cash and hours.
+    """Modal form for changing every field of one tip log.
 
-    `values` is the row's current (date "%m/%d/%Y", card, cash, hours) as
-    display strings; `onSave(date_str, card, cash, hours)` is called with
-    the validated new values (floats for the amounts) when Save is clicked.
+    `row` is the log's current Daily-sheet row (a pandas Series);
+    `onSave(entry)` is called with the validated entry dict (see
+    Logger.addTip) when Save is clicked.
     """
 
-    def __init__(self, app, values, onSave):
+    def __init__(self, app, row, onSave):
         # Plain tk.Toplevel: ttkbootstrap's own Toplevel takes `title` as its
         # first argument (and differs between versions), so it can't be
         # given the parent window positionally.
         super().__init__(app)
-        self.title("Edit Log")
+        self.title("Edit Shift")
         self.app, self.onSave = app, onSave
         self.transient(app)
         self.resizable(False, False)
 
-        form = ttk.Frame(self, padding=24)
-        form.pack()
-        date, card, cash, hours = values
+        box = ttk.Frame(self, padding=24)
+        box.pack()
+        self.form = widgets.ShiftForm(box, app, widgets.sectionsUsed(app.logger.df))
+        self.form.pack(anchor="w")
+        self.form.set(row)
 
-        ttk.Label(form, text="Date", font=app.FONT_BOLD).grid(
-            row=0, column=0, sticky="w", pady=10, padx=(0, 18))
-        self.date = widgets.DatePicker(form)
-        self.date.grid(row=0, column=1, sticky="w", pady=10)
-        self.date.entry.insert(0, date)
-
-        self.fields = {}
-        for i, (label, key, val) in enumerate(
-                (("Card Tip", "card", card), ("Cash Tip", "cash", cash),
-                 ("Hours Worked", "hours", hours)), start=1):
-            ttk.Label(form, text=label, font=app.FONT_BOLD).grid(
-                row=i, column=0, sticky="w", pady=10, padx=(0, 18))
-            e = ttk.Entry(form, width=22, validate="key", validatecommand=app.moneyCmd)
-            e.grid(row=i, column=1, sticky="w", pady=10)
-            e.insert(0, val)
-            self.fields[key] = e
-
-        btns = ttk.Frame(form)
-        btns.grid(row=4, column=0, columnspan=2, sticky="w", pady=(16, 0))
+        btns = ttk.Frame(box)
+        btns.pack(anchor="w", pady=(16, 0))
         ttk.Button(btns, text="Save", bootstyle="primary", width=12,
                    command=self._save).pack(side=LEFT, padx=(0, 10), ipady=4)
         ttk.Button(btns, text="Cancel", bootstyle="secondary-outline", width=12,
                    command=self.destroy).pack(side=LEFT, ipady=4)
-        self.err = ttk.Label(form, text="", bootstyle="danger", font=app.FONT)
-        self.err.grid(row=5, column=0, columnspan=2, sticky="w", pady=(10, 0))
+        self.err = ttk.Label(btns, text="", bootstyle="danger", font=app.FONT)
+        self.err.pack(side=LEFT, padx=(16, 0))
 
         self.bind("<Return>", lambda e: self._save())
         self.bind("<Escape>", lambda e: self.destroy())
@@ -64,26 +49,21 @@ class EditLogDialog(tk.Toplevel):
         y = app.winfo_rooty() + (app.winfo_height() - self.winfo_height()) // 3
         self.geometry(f"+{max(x, 0)}+{max(y, 0)}")
         self.grab_set()
-        self.fields["card"].focus_set()
+        self.form.card.focus_set()
 
     def _save(self):
-        date = self.date.get_date()
-        vals = {k: e.get().strip() for k, e in self.fields.items()}
-        if date is None:
-            self.err.config(text="*Invalid date!")
+        entry, err = self.form.get()
+        if err:
+            self.err.config(text=err)
             return
-        if not all(vals.values()):
-            self.err.config(text="*Please fill in all fields!")
-            return
-        self.onSave(date.strftime("%m/%d/%Y"), float(vals["card"]),
-                    float(vals["cash"]), float(vals["hours"]))
+        self.onSave(entry)
         self.destroy()
 
 
 class DeleteLogs(ttk.Frame):
     """"Edit / Delete Log" screen."""
 
-    HEADERS = ["Date", "Hours", "Card", "Cash", "Total"]
+    HEADERS = formatting.TIP_HEADERS
 
     def __init__(self, master):
         super().__init__(master)
@@ -94,6 +74,7 @@ class DeleteLogs(ttk.Frame):
         # can't be computed from position alone -- it's rebuilt every time
         # loadLogs() runs.
         self._index_map = []
+        self._drawn = None
 
         widgets.makeHeader(self, "Edit / Delete Log", master, backTo=pages.HOME)
 
@@ -124,9 +105,15 @@ class DeleteLogs(ttk.Frame):
 
         self.loadLogs()
 
+    def onShow(self):
+        """Reload when the screen is shown, if logs changed since."""
+        if self._drawn != self.master.stamp():
+            self.loadLogs()
+
     def loadLogs(self):
         """Reload the table from the logger's current data and rebuild
         `_index_map` to match."""
+        self._drawn = self.master.stamp()
         logs = self.master.logger.df[::-1]
         widgets.loadTable(self.table, self.HEADERS, formatting.tip_rows(logs))
         self._index_map = list(logs.index)
@@ -145,14 +132,12 @@ class DeleteLogs(ttk.Frame):
         if df_index is None:
             return
         row = self.master.logger.df.loc[df_index]
-        values = (formatting.fmtDate(row["Date"]), formatting.fmt(row["Card"]),
-                  formatting.fmt(row["Cash"]), formatting.fmt(row["Hours"]))
 
-        def save(date, card, cash, hours):
-            self.master.logger.editLog(df_index, (date, card, cash, hours))
+        def save(entry):
+            self.master.logger.editLog(df_index, entry)
             self.loadLogs()
 
-        EditLogDialog(self.master, values, save)
+        EditLogDialog(self.master, row, save)
 
     def deleteSelected(self):
         """Delete whichever row is selected (if any), then fully reload

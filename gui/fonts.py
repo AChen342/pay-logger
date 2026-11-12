@@ -74,6 +74,7 @@ INTER_AVAILABLE = _load_bundled_fonts()
 atexit.register(_unload_bundled_fonts)
 
 FAMILY = "Inter" if INTER_AVAILABLE else "Segoe UI"
+BIG = (FAMILY, 28, "bold")
 TITLE = (FAMILY, 22, "bold")
 HEAD = (FAMILY, 13, "bold")
 BOLD = (FAMILY, 11, "bold")
