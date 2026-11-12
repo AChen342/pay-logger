@@ -3,5 +3,6 @@ gspread-dataframe
 pandas
 google-api-python-client
 google-auth
-ttkbootstrap
+PySide6
+ttkbootstrap   # only needed for the old Tk interface in gui/
 matplotlib

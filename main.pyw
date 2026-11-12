@@ -73,7 +73,13 @@ from google.oauth2 import service_account
 from googleapiclient.discovery import build
 
 import logger
-from gui import App
+
+try:
+    from ui import App          # the Qt interface
+except ImportError as e:        # PySide6 not installed
+    print(f"Qt interface unavailable ({e}); using the old Tk one. "
+          f"Run: pip install PySide6")
+    from gui import App
 
 CALENDAR_KEYWORD = "Hotschedules"
 CREDENTIALS_FILE = "credentials.json"
