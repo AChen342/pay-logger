@@ -184,6 +184,13 @@ _QSS = """
         background: %(PRIMARY_OFF)s; border-color: %(PRIMARY_OFF)s;
         color: %(SURFACE)s;
     }
+    QPushButton[variant="day"] {
+        padding: 8px 0; min-width: 46px; border-radius: 9px; color: %(MUTED)s;
+    }
+    QPushButton[variant="day"]:checked {
+        background: %(TEXT)s; color: %(ON_PRIMARY)s; border-color: %(TEXT)s;
+        font-weight: bold;
+    }
     QPushButton[variant="danger"] { color: %(DANGER)s; }
     QPushButton[variant="danger"]:hover { background: %(DANGER_WASH)s; color: %(DANGER)s; }
     QPushButton[variant="ghost"] {

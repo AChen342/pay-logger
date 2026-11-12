@@ -150,18 +150,53 @@ def _pace_shift_dates(d, today, end):
     return out
 
 
-def forecast(d, today, upcoming=None, start=None, end=None):
+def describe_days(days):
+    """[3, 4, 5, 6] -> "Thu-Sun"; [1, 3, 5] -> "Tue, Thu, Sat"."""
+    days = sorted(set(days or ()))
+    if not days:
+        return ""
+    short = [WEEKDAYS[i][:3] for i in days]
+    if len(days) > 2 and days == list(range(days[0], days[-1] + 1)):
+        return f"{short[0]}-{short[-1]}"
+    return ", ".join(short)
+
+
+def _likely_dates(today, end, workdays, covered_through):
+    """Dates in (covered_through, end] that fall on a usual workday.
+
+    What the schedule will probably hold once the manager posts it. Only
+    the stretch past the last posted shift is filled in -- gaps inside a
+    posted week are the schedule, not an omission."""
+    if not workdays:
+        return []
+    first = max(today, covered_through) + timedelta(days=1)
+    out, day = [], first
+    while day <= end:
+        if day.weekday() in workdays:
+            out.append(day)
+        day += timedelta(days=1)
+    return out
+
+
+def forecast(d, today, upcoming=None, start=None, end=None, workdays=(),
+             unlogged=()):
     """Project where the period [start, end] (default: this month) will end
     up in take-home tips.
 
-    `upcoming` is the list of future shift dates from the calendar (dates
-    after today, plus today if today's shift hasn't been logged yet). If
-    it's None the calendar wasn't checked, and the remaining shifts are
-    guessed from your recent pace instead.
+    Three kinds of shift make up the projection:
+      * `scheduled` -- on the calendar and still to come.
+      * `unlogged`  -- already worked, no tips logged yet (otherwise they
+                       fall through the gap between "earned" and "to come").
+      * `likely`    -- not posted yet, but on a day the user says they
+                       usually work. Only past the last posted shift.
 
-    Each remaining shift is valued at your recent average for that weekday
-    (or your overall recent average, for weekdays with few samples). The
-    low/high range scales that by your typical slow (25th percentile) and
+    `upcoming` is the calendar's future shift dates, or None if the
+    calendar wasn't checked -- then the remainder is guessed from recent
+    pace, unless usual workdays are set.
+
+    Each shift is valued at the recent average for its weekday (or the
+    overall recent average, for weekdays with few samples). The low/high
+    range scales the unearned part by a typical slow (25th percentile) and
     good (75th percentile) shift.
 
     Returns None if there's no history to learn from.
@@ -173,18 +208,30 @@ def forecast(d, today, upcoming=None, start=None, end=None):
     if vals is None:
         return None
     by_day, overall, p25, p75 = vals
+    workdays = set(workdays or ())
 
     logged = set(d["Date"].dt.date)
+    pending = sorted({u for u in (unlogged or ())
+                      if start <= u <= end and u not in logged})
+
     if upcoming is not None:
-        remaining = sorted({u for u in upcoming
+        scheduled = sorted({u for u in upcoming
                             if (u > today or (u == today and u not in logged))
                             and start <= u <= end})
         source = "calendar"
     else:
-        remaining = _pace_shift_dates(d, today, end)
-        source = "pace"
+        scheduled = [] if workdays else _pace_shift_dates(d, today, end)
+        source = "calendar" if workdays else "pace"
 
-    expected = sum(by_day.get(u.weekday(), overall) for u in remaining)
+    known = set(scheduled) | set(pending)
+    covered_through = max(known) if known else today
+    likely = [day for day in _likely_dates(today, end, workdays, covered_through)
+              if day not in known]
+
+    value = lambda days: sum(by_day.get(day.weekday(), overall) for day in days)
+    scheduled_value = value(scheduled) + value(pending)
+    likely_value = value(likely)
+    expected = scheduled_value + likely_value
     scale_lo = p25 / overall if overall > 0 else 1.0
     scale_hi = p75 / overall if overall > 0 else 1.0
     return {
@@ -192,7 +239,12 @@ def forecast(d, today, upcoming=None, start=None, end=None):
         "projected": so_far["net"] + expected,
         "low": so_far["net"] + expected * scale_lo,
         "high": so_far["net"] + expected * scale_hi,
-        "remaining": remaining,
+        "scheduled": scheduled,
+        "pending": pending,
+        "likely": likely,
+        "scheduled_value": scheduled_value,
+        "likely_value": likely_value,
+        "remaining": scheduled + pending,   # everything already known about
         "per_shift": overall,
         "source": source,
         "start": start,

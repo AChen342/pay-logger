@@ -115,7 +115,7 @@ class Dashboard(Screen):
         fcard.body.addSpacing(8)
         fcard.body.addWidget(widgets.separator())
         fcard.body.addSpacing(8)
-        for key in ("so_far", "left", "goal"):
+        for key in ("so_far", "left", "likely", "goal"):
             self.fc[key] = label("", wrap=True)
             fcard.body.addWidget(self.fc[key])
             fcard.body.addSpacing(4)
@@ -184,10 +184,16 @@ class Dashboard(Screen):
         # Week and month use the calendar's remaining shifts; the year is
         # too far out for that, so it uses recent pace.
         fcs = {}
+        unlogged = app.unlogged_dates()
         for key in ("weekly", "monthly", "yearly"):
             start, end = stats.PERIODS[key](today)
-            fcs[key] = stats.forecast(d, today, None if key == "yearly" else upcoming,
-                                      start, end)
+            fcs[key] = stats.forecast(
+                d, today,
+                None if key == "yearly" else upcoming, start, end,
+                # The year is too far out to fill from usual days; it keeps
+                # the recent-pace estimate.
+                workdays=() if key == "yearly" else app.workdays,
+                unlogged=unlogged)
 
         for key, w in self.periods.items():
             t, fc = so_far[key], fcs[key]
@@ -276,11 +282,31 @@ class Dashboard(Screen):
         f["range"].setText(f"Likely between {money(fc['low'], False)} and "
                            f"{money(fc['high'], False)}")
         f["so_far"].setText(f"{money(fc['so_far'], False)} earned so far")
-        n = len(fc["remaining"])
-        where = ("on your schedule" if fc["source"] == "calendar"
-                 else "expected at your usual pace")
-        f["left"].setText(f"{n} shift{'s' if n != 1 else ''} left {where}"
-                          f"  ·  ~{money(fc['per_shift'], False)} per shift")
+        scheduled, pending, likely = fc["scheduled"], fc["pending"], fc["likely"]
+        if fc["source"] == "pace":
+            n = len(fc["remaining"])
+            f["left"].setText(f"{n} shift{'s' if n != 1 else ''} expected at your "
+                              f"usual pace  ·  ~{money(fc['per_shift'], False)} each")
+        else:
+            n = len(scheduled)
+            line = (f"{n} shift{'s' if n != 1 else ''} scheduled"
+                    f"  ·  ~{money(fc['scheduled_value'], False)}")
+            if pending:
+                line += f"  ·  {len(pending)} worked, not logged yet"
+            f["left"].setText(line)
+
+        days = stats.describe_days(self.app.workdays)
+        if likely:
+            f["likely"].setText(
+                f"{len(likely)} more likely on {days}"
+                f"  ·  ~{money(fc['likely_value'], False)}")
+            widgets.tone(f["likely"], None)
+        elif not self.app.workdays and fc["source"] == "calendar":
+            f["likely"].setText("Your usual days aren't set, so this counts only "
+                                "what's on the calendar.")
+            widgets.tone(f["likely"], "muted")
+        else:
+            f["likely"].setText("")
 
         gp = stats.goal_progress(goal, fc["so_far"], fc["projected"], fc["per_shift"])
         goal_label = f["goal"]
@@ -298,9 +324,9 @@ class Dashboard(Screen):
                                f"to hit your {money(goal, False)} goal")
             widgets.tone(goal_label, "warning")
 
-        if fc["source"] == "calendar" and fc["remaining"]:
-            days = "   ".join(f"{u:%a} {u.month}/{u.day}" for u in fc["remaining"][:4])
-            f["upcoming"].setText("Next up   " + days)
+        if fc["source"] == "calendar" and scheduled:
+            dates = "   ".join(f"{u:%a} {u.month}/{u.day}" for u in scheduled[:4])
+            f["upcoming"].setText("Next up   " + dates)
         elif fc["source"] == "pace":
             f["upcoming"].setText("Opened without the calendar check, so this "
                                   "is based on how often you've worked lately.")

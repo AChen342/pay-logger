@@ -68,6 +68,10 @@ class App(QMainWindow):
         # date -> calendar start time, so Add Shift can guess Lunch/Dinner.
         self.shiftStarts = shiftStarts or {}
         self.goals = goals.load()
+        # Weekdays the user says they usually work (0=Monday). The forecast
+        # fills the part of the month the manager hasn't posted yet with
+        # these; empty means "only count what's actually scheduled".
+        self.workdays = goals.load_workdays()
         # Bumped when something screens draw from changes outside the
         # logger (goals, calendar re-check). See stamp().
         self._uiVersion = 0
@@ -129,10 +133,13 @@ class App(QMainWindow):
         logged = self.logger.loggedDates()
         return [d for d in self.missedDates if d not in logged]
 
-    def set_goals(self, new_goals):
-        """Save goals to goals.json and redraw."""
+    def set_goals(self, new_goals, workdays=None):
+        """Save goals (and, when given, the usual workdays) and redraw."""
         self.goals = dict(new_goals)
         goals.save(self.goals)
+        if workdays is not None:
+            self.workdays = sorted(set(workdays))
+            goals.save_workdays(self.workdays)
         self._uiVersion += 1
         self.show_page(self._page)
 

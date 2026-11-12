@@ -22,8 +22,9 @@ logged yet -- including days you missed -- see "Running it" below.
 - **Insights** -- for the last 30/90 days, this year, or all time: average
   take-home per shift by weekday (chart), tables by shift type and by
   section, and your best and slowest shifts.
-- **Goals** (Dashboard button) -- weekly / monthly / yearly take-home
-  targets, saved in `goals.json` next to the app (not in the sheet).
+- **Goals & usual days** (Dashboard button) -- weekly / monthly / yearly
+  take-home targets, plus the days you usually work, saved in
+  `goals.json` next to the app (not in the sheet).
 - **View Logs** -- browse Daily/Weekly/Monthly/Yearly tip totals, and
   Payday history, in a searchable, sortable table. The **Tips** tab also
   has a **Graph View** (see below).
@@ -60,6 +61,23 @@ calendar check, they're estimated from how often you've worked lately.
 With a monthly goal set, it tells you whether you're on track or roughly
 how many extra shifts you'd need to pick up. The week and year cards show
 an "on pace for" figure the same way.
+
+### Shifts the schedule doesn't have yet
+
+A manager who posts a week at a time leaves the rest of the month blank,
+and a forecast counting only posted shifts reads as "what I'll make if
+nobody schedules me again". So the projection is made of three parts:
+
+- **scheduled** -- on the calendar and still to come;
+- **not logged yet** -- already worked, no tips entered (otherwise a shift
+  that has started falls through the gap between "earned" and "to come");
+- **likely** -- days past the last posted shift that fall on the weekdays
+  you set under Goals.
+
+Only the stretch *after* the last posted shift is filled in: a gap inside
+a posted week is the schedule, not an omission. With no usual days set
+nothing is filled and the card says so, so the number never quietly
+invents shifts.
 
 ### Predicting one shift
 
@@ -142,7 +160,8 @@ plogger/
     stats.py             Dashboard/Insights math: period totals, forecast,
                           next-shift prediction and its self-scoring, goal
                           progress, breakdowns. Pure pandas.
-    goals.py             Loads/saves goals.json (income goals).
+    goals.py             Loads/saves goals.json (income goals and the
+                          weekdays usually worked).
     logger.py            Google Sheets backend: loads the 5 sheet tabs into
                           pandas DataFrames, aggregates Daily -> Weekly/
                           Monthly/Yearly, and pushes every add/edit/delete

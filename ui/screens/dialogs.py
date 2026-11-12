@@ -32,10 +32,12 @@ class _Dialog(QDialog):
 
 
 class GoalsDialog(_Dialog):
-    """Weekly / monthly / yearly take-home tip goals (blank = no goal)."""
+    """Take-home tip goals, and the days usually worked."""
+
+    DAYS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
 
     def __init__(self, app):
-        super().__init__(app, "Income Goals")
+        super().__init__(app, "Goals & usual days")
         self.body.addWidget(label("Take-home tip goals", role="head"))
         self.body.addWidget(label("Leave a box empty for no goal.", role="muted"))
         self.boxes = {}
@@ -48,12 +50,30 @@ class GoalsDialog(_Dialog):
             caption.setFixedWidth(80)
             self.body.addWidget(row(caption, box, None))
             self.boxes[key] = box
+        self.body.addSpacing(10)
+        self.body.addWidget(widgets.separator())
+        self.body.addSpacing(10)
+        self.body.addWidget(label("Days you usually work", role="head"))
+        self.body.addWidget(label(
+            "Used to project the rest of the month before your manager "
+            "posts the schedule. Leave all off to count only the shifts "
+            "actually on your calendar.", role="muted", wrap=True))
+        self.day_buttons = []
+        for index, name in enumerate(self.DAYS):
+            button = widgets.button(name, "day")
+            button.setCheckable(True)
+            button.setChecked(index in app.workdays)
+            self.day_buttons.append(button)
+        self.body.addWidget(row(*self.day_buttons, None, spacing=6))
+
         self.finish()
         self.boxes["weekly"].setFocus()
 
     def save(self):
-        self.app.set_goals({k: (b.value() if (b.value() or 0) > 0 else None)
-                            for k, b in self.boxes.items()})
+        self.app.set_goals(
+            {k: (b.value() if (b.value() or 0) > 0 else None)
+             for k, b in self.boxes.items()},
+            workdays=[i for i, b in enumerate(self.day_buttons) if b.isChecked()])
         self.accept()
 
 
