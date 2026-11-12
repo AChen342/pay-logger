@@ -14,6 +14,7 @@ FG = "#adb5bd"
 GRID = "#444444"
 CARD = "#3498db"
 CASH = "#00bc8c"
+TIPOUT = "#e74c3c"
 
 # granularity -> (pandas freq, x-label format, name used in the title)
 GRANULARITIES = {
@@ -38,6 +39,7 @@ def _daily(df, start=None, end=None):
         "Hours": _num(df["Hours"]),
         "Card": _num(df["Card"]),
         "Cash": _num(df["Cash"]),
+        "TipOut": _num(df["Tip Out"]) if "Tip Out" in df.columns else 0.0,
     }).dropna(subset=["Date"])
     if start is not None:
         d = d[d["Date"] >= pd.Timestamp(start)]
@@ -58,12 +60,12 @@ def _aggregate(df, freq, start=None, end=None):
 
 def summary(df, start=None, end=None):
     """Headline numbers for the range, or None if it has no shifts:
-    total tips, hours, shift count, average per shift, average per hour,
+    total take-home tips (card + cash - tip out), hours, shift count, average per shift, average per hour,
     and the best single day."""
     d = _daily(df, start, end)
     if d.empty:
         return None
-    total_by_day = d["Card"] + d["Cash"]
+    total_by_day = d["Card"] + d["Cash"] - d["TipOut"]
     total, hours = float(total_by_day.sum()), float(d["Hours"].sum())
     best = total_by_day.idxmax()
     return {
@@ -122,28 +124,33 @@ def tips_figure(df, granularity="Day", start=None, end=None, fig=None,
 
     labels = d["Date"].dt.strftime(label_fmt).tolist()
     hours = d["Hours"].tolist()
-    card_t, cash_t = d["Card"].tolist(), d["Cash"].tolist()
+    card_t, cash_t, out_t = d["Card"].tolist(), d["Cash"].tolist(), d["TipOut"].tolist()
     if per_hour:  # divide each period's tips by its hours (0 if none)
-        card = [c / h if h > 0 else 0.0 for c, h in zip(card_t, hours)]
-        cash = [c / h if h > 0 else 0.0 for c, h in zip(cash_t, hours)]
+        div = lambda vals: [v / h if h > 0 else 0.0 for v, h in zip(vals, hours)]
+        card, cash, out = div(card_t), div(cash_t), div(out_t)
     else:
-        card, cash = card_t, cash_t
+        card, cash, out = card_t, cash_t, out_t
     heights = [a + b for a, b in zip(card, cash)]
 
     tooltips = []
     for i, label in enumerate(labels):
+        net = card_t[i] + cash_t[i] - out_t[i]
+        lines = [label]
         if per_hour:
-            tooltips.append(f"{label}\nPer hour: ${heights[i]:,.2f}\n"
-                            f"Total: ${card_t[i] + cash_t[i]:,.2f}\n"
-                            f"Hours: {hours[i]:g}")
-        else:
-            tooltips.append(f"{label}\nTotal: ${heights[i]:,.2f}\n"
-                            f"Card: ${card[i]:,.2f}\nCash: ${cash[i]:,.2f}\n"
-                            f"Hours: {hours[i]:g}")
+            lines.append(f"Take-home/hr: ${heights[i] - out[i]:,.2f}")
+        lines.append(f"Card: ${card_t[i]:,.2f}   Cash: ${cash_t[i]:,.2f}")
+        if out_t[i]:
+            lines.append(f"Tip out: -${out_t[i]:,.2f}")
+        lines.append(f"Take-home: ${net:,.2f}")
+        lines.append(f"Hours: {hours[i]:g}")
+        tooltips.append("\n".join(lines))
 
     x = list(range(len(labels)))
     ax.bar(x, card, color=CARD, label="Card", width=0.75)
     ax.bar(x, cash, bottom=card, color=CASH, label="Cash", width=0.75)
+    if any(out):  # tip-outs hang below zero
+        ax.bar(x, [-v for v in out], color=TIPOUT, label="Tip out", width=0.75)
+        ax.axhline(0, color=GRID, linewidth=0.8)
 
     # Hover tooltip: hidden until the GUI (see ViewLogs) shows it over a bar.
     ann = ax.annotate(
@@ -171,4 +178,49 @@ def tips_figure(df, granularity="Day", start=None, end=None, fig=None,
     leg = ax.legend(frameon=False, loc="upper left")
     for t in leg.get_texts():
         t.set_color(FG)
+    return fig
+
+
+def weekday_figure(table, fig=None):
+    """Average take-home per shift by weekday (bars, Mon..Sun), from a
+    stats.breakdown(d, "Weekday") table. Same redraw-in-place contract as
+    tips_figure."""
+    if fig is None:
+        fig = Figure(figsize=(6, 3.2), dpi=100, facecolor=BG, constrained_layout=True)
+    else:
+        fig.clear()
+    ax = fig.add_subplot(111, facecolor=BG)
+    ax.set_title("Average take-home per shift", color="white", pad=10,
+                 fontsize=12, fontweight="bold")
+    ax.tick_params(colors=FG)
+    for side in ("top", "right"):
+        ax.spines[side].set_visible(False)
+    for side in ("left", "bottom"):
+        ax.spines[side].set_color(GRID)
+    ax.grid(axis="y", color=GRID, linewidth=0.6, alpha=0.7)
+    ax.set_axisbelow(True)
+    ax.yaxis.set_major_formatter(FuncFormatter(lambda v, _: f"${v:,.0f}"))
+
+    days = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday",
+            "Saturday", "Sunday")
+    vals = dict(zip(table["Group"], table["Avg shift"])) if len(table) else {}
+    counts = dict(zip(table["Group"], table["Shifts"])) if len(table) else {}
+    if not vals:
+        ax.text(0.5, 0.5, "No shifts in this range", color=FG, ha="center",
+                va="center", transform=ax.transAxes, fontsize=12)
+        ax.set_xticks([])
+        ax.set_yticks([])
+        return fig
+    heights = [vals.get(d, 0) for d in days]
+    best = max(heights)
+    colors = [CASH if h == best and h > 0 else CARD for h in heights]
+    bars = ax.bar(range(7), heights, color=colors, width=0.65)
+    for b, d in zip(bars, days):
+        if counts.get(d):
+            ax.annotate(f"${vals[d]:,.0f}", (b.get_x() + b.get_width() / 2, b.get_height()),
+                        xytext=(0, 4), textcoords="offset points", ha="center",
+                        color="white", fontsize=9)
+    ax.set_xticks(range(7))
+    ax.set_xticklabels([d[:3] for d in days])
+    ax.set_ylim(0, best * 1.18 if best > 0 else 1)
     return fig
