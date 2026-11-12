@@ -34,6 +34,8 @@ RECENT_ROWS = 8  # how many shifts the "Recent shifts" card lists
 class Dashboard(Screen):
     """Landing page."""
 
+    scrollable = True
+
     def __init__(self, app):
         super().__init__(app)
 
@@ -49,7 +51,7 @@ class Dashboard(Screen):
         nav = [widgets.button(text, variant,
                               lambda _=False, p=page: app.show_page(p))
                for text, page, variant in NAV]
-        nav.append(widgets.button("Goals", "ghost", self.edit_goals))
+        nav.append(widgets.button("Settings", "ghost", self.edit_goals))
         nav.append(widgets.button("Quit", "ghost", app.close))
         self.body.addWidget(row(title_host, None, *nav, spacing=6))
         self.body.addSpacing(8)
@@ -124,6 +126,7 @@ class Dashboard(Screen):
         fcard.body.addStretch(1)
         left_column = QVBoxLayout()
         left_column.setSpacing(22)
+        left_column.setContentsMargins(0, 0, 0, 0)
         left_column.addWidget(ncard)
         left_column.addWidget(fcard)
         left_host = QWidget()
@@ -302,8 +305,8 @@ class Dashboard(Screen):
                 f"  ·  ~{money(fc['likely_value'], False)}")
             widgets.tone(f["likely"], None)
         elif not self.app.workdays and fc["source"] == "calendar":
-            f["likely"].setText("Your usual days aren't set, so this counts only "
-                                "what's on the calendar.")
+            f["likely"].setText("Scheduled shifts only — set your usual days "
+                                "in Settings")
             widgets.tone(f["likely"], "muted")
         else:
             f["likely"].setText("")

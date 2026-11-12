@@ -1,7 +1,7 @@
 """What every screen shares: the page header, the body layout, and the
 "only redraw when something changed" hook.
 """
-from PySide6.QtWidgets import QVBoxLayout, QWidget
+from PySide6.QtWidgets import (QFrame, QScrollArea, QVBoxLayout, QWidget)
 
 from .. import pages, widgets
 
@@ -16,6 +16,10 @@ class Screen(QWidget):
 
     title = ""
     back_button = True
+    # Screens made of cards (rather than one big table) set this: when the
+    # window is too short the page scrolls instead of squeezing the cards
+    # until their text overlaps.
+    scrollable = False
 
     def __init__(self, app):
         super().__init__()
@@ -34,7 +38,18 @@ class Screen(QWidget):
 
         self.body = QVBoxLayout()
         self.body.setSpacing(18)
-        root.addLayout(self.body, 1)
+        if self.scrollable:
+            inner = QWidget()
+            inner.setLayout(self.body)
+            area = QScrollArea()
+            area.setWidget(inner)
+            area.setWidgetResizable(True)
+            area.setFrameShape(QFrame.Shape.NoFrame)
+            area.viewport().setAutoFillBackground(False)
+            inner.setAutoFillBackground(False)
+            root.addWidget(area, 1)
+        else:
+            root.addLayout(self.body, 1)
 
     # --- Redraw control ---------------------------------------------
     def on_show(self):

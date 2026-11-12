@@ -37,7 +37,7 @@ class GoalsDialog(_Dialog):
     DAYS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
 
     def __init__(self, app):
-        super().__init__(app, "Goals & usual days")
+        super().__init__(app, "Settings")
         self.body.addWidget(label("Take-home tip goals", role="head"))
         self.body.addWidget(label("Leave a box empty for no goal.", role="muted"))
         self.boxes = {}

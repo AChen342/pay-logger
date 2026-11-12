@@ -40,6 +40,14 @@ def label(text="", role=None, tone=None, wrap=False):
         lb.setProperty("tone", tone)
     if wrap:
         lb.setWordWrap(True)
+        # A word-wrapped QLabel only reports the height it needs for the
+        # width it is actually given if its size policy says so. Without
+        # this the layout allows one line and a two-line label draws over
+        # whatever is above and below it.
+        policy = lb.sizePolicy()
+        policy.setHeightForWidth(True)
+        policy.setVerticalPolicy(QSizePolicy.Policy.MinimumExpanding)
+        lb.setSizePolicy(policy)
     return lb
 
 
