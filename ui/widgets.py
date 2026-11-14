@@ -6,7 +6,7 @@ display strings and get values back -- so each one can be read on its own.
 """
 from datetime import date, datetime
 
-from PySide6.QtCore import QDate, QSortFilterProxyModel, Qt, Signal
+from PySide6.QtCore import QDate, QEvent, QSortFilterProxyModel, Qt, Signal
 from PySide6.QtGui import QDoubleValidator, QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (QAbstractItemView, QComboBox, QDateEdit, QFrame,
                                QHBoxLayout, QHeaderView, QLabel, QLineEdit,
@@ -21,6 +21,23 @@ DATE_FMT = "MM/dd/yyyy"
 # Columns holding text rather than numbers: left-aligned wherever they turn up.
 TEXT_COLUMNS = {"Type", "Section", "Notes", "Shift Type", "Day", "Date",
                 "Start", "End", "Week Ending", "Month", "Year"}
+
+# Columns that sort A->Z / oldest-first on the first click. Money and hours
+# sort biggest first. Dates go oldest-first because the tables already open
+# newest-first -- a first click that changed nothing felt like it missed.
+ASCENDING_FIRST = {"Type", "Section", "Shift Type", "Day", "Date", "Start",
+                   "End", "Week Ending", "Month", "Year"}
+# Columns you can't sort by (free text, nothing useful to order).
+UNSORTABLE = {"Notes"}
+SORT_HINT = "Click to sort · again to flip · a third time to reset"
+
+
+def _order_value(order):
+    """A Qt.SortOrder as a plain int (what InitialSortOrderRole wants)."""
+    try:
+        return int(order)
+    except TypeError:
+        return order.value
 
 
 # --- Small helpers --------------------------------------------------------
@@ -213,6 +230,20 @@ class _Cell(QStandardItem):
         return a < b if b is not None else True
 
 
+class _ValueSortProxy(QSortFilterProxyModel):
+    """Sorts by each _Cell's value. The stock proxy compares the display
+    text, so "9.00" landed above "120.50" and 01/2026 above 11/2025."""
+
+    def lessThan(self, left, right):
+        model = self.sourceModel()
+        a = model.itemFromIndex(left)
+        b = model.itemFromIndex(right)
+        ka, kb = getattr(a, "_key", None), getattr(b, "_key", None)
+        if ka is None or kb is None:
+            return super().lessThan(left, right)
+        return ka < kb
+
+
 class DataTable(QWidget):
     """A sortable (and optionally searchable) table of display strings.
 
@@ -240,7 +271,7 @@ class DataTable(QWidget):
             lay.addWidget(self.search)
 
         self.model = QStandardItemModel()
-        self.proxy = QSortFilterProxyModel()
+        self.proxy = _ValueSortProxy()
         self.proxy.setSourceModel(self.model)
         self.proxy.setFilterKeyColumn(-1)  # search every column
         self.proxy.setFilterCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
@@ -263,10 +294,20 @@ class DataTable(QWidget):
                                  else Qt.FocusPolicy.NoFocus)
         self.view.doubleClicked.connect(
             lambda _: self.activated.emit(self.selected_row() or 0))
+        self._headers = []
         head = self.view.horizontalHeader()
         head.setHighlightSections(False)
+        head.setSectionsClickable(True)
+        head.setCursor(Qt.CursorShape.PointingHandCursor)
+        # The arrow is drawn into the header text (see _relabel) -- the
+        # stylesheet's flat headers leave Qt's own indicator nearly invisible.
         head.setSortIndicatorShown(False)
-        head.sectionClicked.connect(self._clicked_header)
+        if hasattr(head, "setSortIndicatorClearable"):  # Qt 6.1+
+            # Third click on a column goes back to the original order.
+            head.setSortIndicatorClearable(True)
+        head.sortIndicatorChanged.connect(self._sort_changed)
+        head.viewport().setMouseTracking(True)
+        head.viewport().installEventFilter(self)
         self.set_fit(fit)
         lay.addWidget(self.view, 1)
 
@@ -298,9 +339,42 @@ class DataTable(QWidget):
             head.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
             head.setStretchLastSection(True)
 
-    def _clicked_header(self, _column):
-        self._user_sorted = True
-        self.view.horizontalHeader().setSortIndicatorShown(True)
+    def _unsortable_at(self, pos):
+        i = self.view.horizontalHeader().logicalIndexAt(pos)
+        return 0 <= i < len(self._headers) and self._headers[i] in UNSORTABLE
+
+    def eventFilter(self, obj, event):
+        """Header clicks on an UNSORTABLE column are swallowed, and the
+        pointer only turns into a hand over columns that do sort."""
+        head = self.view.horizontalHeader()
+        if obj is head.viewport():
+            kind = event.type()
+            if kind in (QEvent.Type.MouseButtonPress, QEvent.Type.MouseButtonRelease,
+                        QEvent.Type.MouseButtonDblClick):
+                if self._unsortable_at(event.position().toPoint()):
+                    return True
+            elif kind == QEvent.Type.MouseMove:
+                obj.setCursor(Qt.CursorShape.ArrowCursor
+                              if self._unsortable_at(event.position().toPoint())
+                              else Qt.CursorShape.PointingHandCursor)
+        return super().eventFilter(obj, event)
+
+    def _sort_changed(self, section, _order):
+        self._user_sorted = section >= 0
+        self._relabel()
+
+    def _relabel(self):
+        """Put ▲/▼ after the name of the column the table is sorted by."""
+        head = self.view.horizontalHeader()
+        section, order = head.sortIndicatorSection(), head.sortIndicatorOrder()
+        for i, h in enumerate(self._headers):
+            text = h
+            if self._user_sorted and i == section:
+                text += "  ▲" if order == Qt.SortOrder.AscendingOrder else "  ▼"
+            self.model.setHeaderData(i, Qt.Orientation.Horizontal, text)
+            self.model.setHeaderData(i, Qt.Orientation.Horizontal,
+                                     None if h in UNSORTABLE else SORT_HINT,
+                                     Qt.ItemDataRole.ToolTipRole)
 
     def load(self, headers, rows):
         """Replace the contents. `rows` are tuples of display strings."""
@@ -308,7 +382,14 @@ class DataTable(QWidget):
         keep, order = head.sortIndicatorSection(), head.sortIndicatorOrder()
         self.view.setSortingEnabled(False)
         self.model.clear()
-        self.model.setHorizontalHeaderLabels(list(headers))
+        self._headers = list(headers)
+        self.model.setHorizontalHeaderLabels(self._headers)
+        for i, h in enumerate(self._headers):
+            first = (Qt.SortOrder.AscendingOrder if h in ASCENDING_FIRST
+                     else Qt.SortOrder.DescendingOrder)
+            self.model.setHeaderData(i, Qt.Orientation.Horizontal,
+                                     _order_value(first),
+                                     Qt.ItemDataRole.InitialSortOrderRole)
         rights = [h not in TEXT_COLUMNS and i != 0 for i, h in enumerate(headers)]
         for r in rows:
             self.model.appendRow([_Cell(v, rights[i] if i < len(rights) else True)
@@ -319,7 +400,9 @@ class DataTable(QWidget):
         else:  # keep the order the caller gave (usually newest first)
             self.proxy.sort(-1)
             head.setSortIndicator(-1, Qt.SortOrder.AscendingOrder)
-            head.setSortIndicatorShown(False)
+            self._user_sorted = False
+        head.setSortIndicatorShown(False)  # setSortingEnabled turns it back on
+        self._relabel()
         self.set_fit(self._fit)
 
     def selected_row(self):

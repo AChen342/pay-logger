@@ -244,7 +244,8 @@ def insights(range: str = "Last 90 days"):
                        for _, r in g.iterrows()]
     weekday = [{"group": r["Group"], "avg": r["Avg shift"], "shifts": int(r["Shifts"])}
                for _, r in stats.breakdown(d, "Weekday").iterrows()]
-    rank = lambda best: [{"date": r["Date"].strftime("%a %m/%d"), "type": r["Type"],
+    rank = lambda best: [{"date": r["Date"].strftime("%a %m/%d"),
+                          "iso": r["Date"].strftime("%Y-%m-%d"), "type": r["Type"],
                           "net": float(r["Net"]),
                           "per_hour": float(r["Net"] / r["Hours"]) if r["Hours"] > 0 else None}
                          for _, r in stats.ranked(d, 5, best).iterrows()]

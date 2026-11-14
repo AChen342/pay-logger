@@ -64,6 +64,13 @@ th { color: var(--muted); font-weight: 600; text-align: right; padding: 9px 8px;
   border-bottom: 1px solid var(--border); font-size: 11px; letter-spacing: .5px;
   position: sticky; top: 0; background: var(--surface); }
 th:first-child, td:first-child { text-align: left; }
+th.sortable { cursor: pointer; user-select: none; -webkit-user-select: none; white-space: nowrap;
+  touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+/* Hover only on real mice: on iPhone a :hover style can eat the first tap. */
+@media (hover: hover) { th.sortable:hover { color: var(--text); } }
+th[data-dir="asc"], th[data-dir="desc"] { color: var(--text); }
+th[data-dir="asc"]::after { content: " ▲"; font-size: 9px; }
+th[data-dir="desc"]::after { content: " ▼"; font-size: 9px; }
 td { padding: 9px 8px; border-bottom: 1px solid var(--rule); text-align: right; color: var(--body); }
 .tablewrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 .tabs { display: flex; gap: 4px; overflow-x: auto; margin-bottom: 10px; }

@@ -42,6 +42,76 @@ async function api(path, opts) {
   return r.status === 204 ? null : r.json();
 }
 
+// --- sortable tables ------------------------------------------------------
+// Click a column header to sort by it: money and hours go biggest first,
+// dates oldest first, text A→Z; Notes doesn't sort. Click again to flip, a third time to go back to
+// the original order. Blank cells always sink to the bottom. The choice is
+// remembered per table, so it survives re-renders (e.g. after an edit).
+// Text and date columns go A→Z / oldest-first on the first click (the
+// tables already open newest-first, so a newest-first click changed nothing).
+const ASC_FIRST = new Set(["Type", "Section", "Shift Type", "Day", "Date",
+  "Start", "End", "Week Ending", "Month", "Year"]);
+const UNSORTABLE = new Set(["Notes"]);
+const SORTS = {};
+function sortKey(text) {
+  const s = (text ?? "").toString().trim();
+  if (!s || s === "—") return null;
+  let m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);                    // ISO
+  if (m) return +new Date(+m[1], m[2] - 1, +m[3]);
+  m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);                  // MM/DD/YYYY
+  if (m) return +new Date(+m[3], m[1] - 1, +m[2]);
+  m = s.match(/^(\d{1,2})\/(\d{4})$/);                             // MM/YYYY
+  if (m) return +new Date(+m[2], m[1] - 1, 1);
+  const n = parseFloat(s.replace(/[$,]|\/hr$/g, ""));
+  if (!isNaN(n) && /^[-$\d.,]+(\/hr)?$/.test(s)) return n;
+  return s.toLowerCase();
+}
+function compareKeys(a, b) {
+  if (typeof a === typeof b) return a < b ? -1 : a > b ? 1 : 0;
+  return typeof a === "number" ? -1 : 1;          // numbers before text
+}
+function makeSortable(table, id) {
+  const ths = [...table.tHead.rows[0].cells];
+  const tb = table.tBodies[0];
+  const original = [...tb.rows];
+  const keys = new Map(original.map(tr =>
+    [tr, [...tr.cells].map(td => sortKey(td.dataset.sort ?? td.textContent))]));
+  if (SORTS[id] && SORTS[id].col >= ths.length) delete SORTS[id];
+  function apply() {
+    const st = SORTS[id];
+    ths.forEach((th, i) => {
+      const dir = st && st.col === i ? st.dir : "";
+      th.dataset.dir = dir;
+      th.setAttribute("aria-sort", dir === "asc" ? "ascending" : dir === "desc" ? "descending" : "none");
+    });
+    let rows = original.slice();
+    if (st) {
+      const sign = st.dir === "asc" ? 1 : -1;
+      rows.sort((a, b) => {
+        const x = keys.get(a)[st.col], y = keys.get(b)[st.col];
+        if (x === null || y === null) return (x === null) - (y === null);
+        return sign * compareKeys(x, y);
+      });
+    }
+    rows.forEach(r => tb.appendChild(r));
+  }
+  ths.forEach((th, i) => {
+    if (UNSORTABLE.has(th.textContent.trim())) return;
+    th.classList.add("sortable");
+    th.title = "Sort by " + th.textContent;
+    th.onclick = () => {
+      const asc = ASC_FIRST.has(th.textContent.trim());
+      const first = asc ? "asc" : "desc", second = asc ? "desc" : "asc";
+      const st = SORTS[id];
+      if (!st || st.col !== i) SORTS[id] = { col: i, dir: first };
+      else if (st.dir === first) st.dir = second;
+      else delete SORTS[id];
+      apply();
+    };
+  });
+  apply();
+}
+
 // --- navigation -----------------------------------------------------------
 function switchView(name) {
   CURRENT = name;
@@ -275,6 +345,7 @@ async function renderLogs() {
     tb.appendChild(tr);
   });
   t.appendChild(tb); host.innerHTML = ""; host.appendChild(t);
+  makeSortable(t, "logs:" + logTab);
 }
 // Tips row -> edit form. Columns: Date,Type,Hours,Card,Cash,Tip Out,Take-home,Section,Notes
 function openEdit(row, index) {
@@ -348,15 +419,15 @@ function groupCard(title, rows, col) {
   t.innerHTML = `<thead><tr><th>${col}</th><th>Shifts</th><th>Avg</th><th>Per hr</th></tr></thead>`;
   const tb = el("tbody");
   rows.forEach(r => tb.innerHTML += `<tr><td>${esc(r.group)}</td><td>${r.shifts}</td><td>${money(r.avg)}</td><td>${r.per_hour == null ? "—" : money(r.per_hour)}</td></tr>`);
-  t.appendChild(tb); c.appendChild(t); return c;
+  t.appendChild(tb); c.appendChild(t); makeSortable(t, "ins:" + title); return c;
 }
 function rankCard(title, rows) {
   const c = el("div", "card"); c.appendChild(el("div", "head", title));
   const t = el("table");
   t.innerHTML = `<thead><tr><th>Date</th><th>Type</th><th>Take-home</th><th>$/hr</th></tr></thead>`;
   const tb = el("tbody");
-  rows.forEach(r => tb.innerHTML += `<tr><td>${esc(r.date)}</td><td>${esc(r.type || "—")}</td><td>${money(r.net)}</td><td>${r.per_hour == null ? "" : money(r.per_hour)}</td></tr>`);
-  t.appendChild(tb); c.appendChild(t); return c;
+  rows.forEach(r => tb.innerHTML += `<tr><td data-sort="${esc(r.iso || "")}">${esc(r.date)}</td><td>${esc(r.type || "—")}</td><td>${money(r.net)}</td><td>${r.per_hour == null ? "" : money(r.per_hour)}</td></tr>`);
+  t.appendChild(tb); c.appendChild(t); makeSortable(t, "ins:" + title); return c;
 }
 
 // --- MORE: payday + settings ---------------------------------------------
