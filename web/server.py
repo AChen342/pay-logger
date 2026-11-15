@@ -407,6 +407,17 @@ def refresh():
 
 # --- Static frontend (mounted last so it doesn't shadow /api) -------------
 
+@app.middleware("http")
+async def _no_stale_frontend(request, call_next):
+    """Make phones re-check the page/JS/CSS on every load (they still get a
+    cheap 304 when nothing changed), so a deploy shows up immediately
+    instead of Safari serving its cached copy."""
+    response = await call_next(request)
+    if not request.url.path.startswith("/api"):
+        response.headers["Cache-Control"] = "no-cache"
+    return response
+
+
 @app.get("/")
 def index():
     return FileResponse(os.path.join(_STATIC, "index.html"))
