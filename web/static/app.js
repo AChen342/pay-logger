@@ -526,7 +526,7 @@ function maybeRoast(force) {
       <div class="roast-title">Missed Weekly Goal By <span class="danger">${money(short)}</span></div>
       <div class="roast-line">${esc(line)}</div>
       ${made ? `<div class="sub">${made}</div>` : ""}
-      <button class="primary">I will do better (lie)</button>
+      <button class="primary">FAAAAHH...</button>
     </div>`);
   const close = () => ov.remove();
   ov.querySelector("button").onclick = close;
