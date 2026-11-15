@@ -500,19 +500,15 @@ const ROASTS = [
   "ChatGPT, take this man's knees.",
   "Send a nuke to this man's house.",
   "Outback, revoke this man's Bloomin' Onion privileges immediately.",
-  "Release the kookaburras.",
-  "Somebody tell Australia to deport this man from the Outback.",
   "Claude, delete this man's GitHub.",
   "Uninstall this man.",
-  "Alexa, play Taps.",
   "Put this man in the walk-in freezer and lock the door.",
-  "Ring the Steakhouse alarm. We have a situation.",
   "Strip this man of his apron and his dignity.",
-  "Call his mother.",
-  "This man is now legally a well-done steak.",
   "Throw this man into the deep fryer with the Aussie Cheese Fries.",
   "Somebody get this man a second job and a therapist.",
-  "Initiate Protocol: Shrimp on the Barbie.",
+  "Jarvis remove his balls.",
+  "Chat, WTF are we doing?",
+  "You should Malphite R off a bridge."
 ];
 function maybeRoast(force) {
   const lw = STATE && STATE.last_week;
@@ -527,7 +523,6 @@ function maybeRoast(force) {
   const made = lw ? `You made ${money(lw.net)} of ${money(lw.goal, false)} (${esc(when)}).` : "";
   const ov = el("div", "roast-overlay", `
     <div class="roast">
-      <div class="roast-emoji">🚨🥩🚨</div>
       <div class="roast-title">Missed Weekly Goal By <span class="danger">${money(short)}</span></div>
       <div class="roast-line">${esc(line)}</div>
       ${made ? `<div class="sub">${made}</div>` : ""}
