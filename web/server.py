@@ -12,7 +12,7 @@ Run:  uvicorn web.server:app --host 0.0.0.0 --port 8690
 import os
 import sys
 import threading
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
@@ -150,6 +150,18 @@ def state():
                "accuracy": stats.prediction_accuracy(d),
                "holiday": _holiday_payload(stats.holiday(when), when)}
 
+    # Last full week (Mon-Sun) against the weekly goal, for the "you missed
+    # it" popup. Only sent when there's a goal and the week had any shifts
+    # on record (so a week off / before the app existed doesn't nag).
+    last_week = None
+    if g.get("weekly"):
+        lw_a, lw_b = stats.week_bounds(today - timedelta(days=7))
+        lw = stats.totals(stats.between(d, lw_a, lw_b))
+        if lw["shifts"]:
+            last_week = {"start": lw_a.isoformat(), "end": lw_b.isoformat(),
+                         "net": lw["net"], "shifts": lw["shifts"],
+                         "goal": g["weekly"], "missed": lw["net"] < g["weekly"]}
+
     recent = [_recent_row(r) for _, r in d.tail(8).iloc[::-1].iterrows()]
     return {
         "ready": True,
@@ -160,6 +172,7 @@ def state():
         "forecast": _forecast_payload(fcs["monthly"], g.get("monthly"), workdays),
         "next_shift": nxt,
         "recent": recent,
+        "last_week": last_week,
         "settings": {"weekly": g.get("weekly"), "monthly": g.get("monthly"),
                      "yearly": g.get("yearly"), "workdays": workdays},
     }

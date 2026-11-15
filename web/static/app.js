@@ -493,8 +493,58 @@ async function renderMore() {
   };
 }
 
+// --- missed-weekly-goal popup ----------------------------------------------
+// Shown once per week, the first time the app opens after a Mon-Sun week
+// that came in under the weekly goal. Add ?roast to the URL to preview it.
+const ROASTS = [
+  "ChatGPT, take this man's knees.",
+  "Send a nuke to this man's house.",
+  "Outback, revoke this man's Bloomin' Onion privileges immediately.",
+  "Release the kookaburras.",
+  "Somebody tell Australia to deport this man from the Outback.",
+  "Claude, delete this man's GitHub.",
+  "Uninstall this man.",
+  "Alexa, play Taps.",
+  "Put this man in the walk-in freezer and lock the door.",
+  "Ring the Steakhouse alarm. We have a situation.",
+  "Strip this man of his apron and his dignity.",
+  "Call his mother.",
+  "This man is now legally a well-done steak.",
+  "Throw this man into the deep fryer with the Aussie Cheese Fries.",
+  "Somebody get this man a second job and a therapist.",
+  "Initiate Protocol: Shrimp on the Barbie.",
+];
+function maybeRoast(force) {
+  const lw = STATE && STATE.last_week;
+  if (!force && (!lw || !lw.missed)) return;
+  const key = "roasted:" + (lw ? lw.start : "preview");
+  if (!force) {
+    try { if (localStorage.getItem(key)) return; localStorage.setItem(key, "1"); } catch (e) {}
+  }
+  const short = lw ? Math.max(0, lw.goal - lw.net) : 123.45;
+  const line = ROASTS[Math.floor(Math.random() * ROASTS.length)];
+  const when = lw ? `${fmtDateISO(lw.start)} – ${fmtDateISO(lw.end)}` : "preview";
+  const made = lw ? `You made ${money(lw.net)} of ${money(lw.goal, false)} (${esc(when)}).` : "";
+  const ov = el("div", "roast-overlay", `
+    <div class="roast">
+      <div class="roast-emoji">🚨🥩🚨</div>
+      <div class="roast-title">Missed Weekly Goal By <span class="danger">${money(short)}</span></div>
+      <div class="roast-line">${esc(line)}</div>
+      ${made ? `<div class="sub">${made}</div>` : ""}
+      <button class="primary">I will do better (lie)</button>
+    </div>`);
+  const close = () => ov.remove();
+  ov.querySelector("button").onclick = close;
+  ov.addEventListener("click", e => { if (e.target === ov) close(); });
+  document.body.appendChild(ov);
+}
+
 const RENDER = { home: renderHome, add: () => renderAdd(null), logs: renderLogs,
                  insights: renderInsights, more: renderMore };
 
 // --- boot -----------------------------------------------------------------
-(async () => { try { await loadState(); } catch (e) {} renderHome(); })();
+(async () => {
+  try { await loadState(); } catch (e) {}
+  renderHome();
+  maybeRoast(new URLSearchParams(location.search).has("roast"));
+})();

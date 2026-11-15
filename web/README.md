@@ -57,6 +57,12 @@ icon (the manifest/theme-color are set for that).
 
 ## Updating
 
+From the laptop, double-click **`Deploy to Server.bat`** (repo root). It
+commits + pushes, then SSHes to ac-server to pull, rebuild and restart.
+Set `REPO` at the top of it to where the repo lives on the server.
+
+Or by hand on the server:
+
 ```bash
 git pull
 podman build -t paylogger -f web/Containerfile .

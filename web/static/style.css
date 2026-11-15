@@ -119,3 +119,18 @@ button.danger-btn { background: none; border: 1px solid var(--danger); color: va
 
 .link { color: var(--info); background: none; border: none; font-size: 14px; padding: 6px 0; }
 .center { text-align: center; color: var(--muted); padding: 30px 10px; }
+
+/* Missed-weekly-goal popup */
+.roast-overlay { position: fixed; inset: 0; z-index: 50; background: rgba(0,0,0,.65);
+  display: flex; align-items: center; justify-content: center; padding: 20px;
+  animation: roast-fade .2s ease-out; }
+.roast { background: var(--surface); border: 1px solid var(--danger); border-radius: 16px;
+  padding: 22px 20px 18px; max-width: 380px; width: 100%; text-align: center;
+  animation: roast-shake .5s ease-in-out .15s; }
+.roast-emoji { font-size: 34px; margin-bottom: 8px; }
+.roast-title { color: var(--text); font-size: 22px; font-weight: 800; line-height: 1.25; }
+.roast-line { color: var(--body); font-size: 17px; font-style: italic; line-height: 1.4; margin: 12px 0 10px; }
+.roast .sub { margin-bottom: 16px; }
+@keyframes roast-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes roast-shake { 0%,100% { transform: translateX(0); } 20% { transform: translateX(-8px) rotate(-1deg); }
+  40% { transform: translateX(8px) rotate(1deg); } 60% { transform: translateX(-5px); } 80% { transform: translateX(5px); } }
